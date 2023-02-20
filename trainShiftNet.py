@@ -13,6 +13,7 @@ from config_shift import *
 from dataset import BuildingDataset
 import pandas as pd
 from ShiftNet import ShiftNet
+from LeNet5 import LeNet5
 import os
 from torchvision import transforms
 
@@ -126,7 +127,8 @@ if __name__ == '__main__':
     valid_loader = DataLoader(dataset=valid_data, batch_size=BATCH_SIZE, num_workers=4, pin_memory=True,
                               shuffle=True)
     # AlexNet model and training
-    net = ShiftNet(num_classes=N_FEATURES, init_weights=True)
+    #net = ShiftNet(num_classes=N_FEATURES, init_weights=True)
+    net = LeNet5(num_classes=N_FEATURES)
     # net = GoogleNet(num_class=N_FEATURES)
     # 模拟输入数据，进行网络可视化
     # input_data = Variable(torch.rand(16, 3, 224, 224))

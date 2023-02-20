@@ -7,7 +7,7 @@ class DifferenceNet(nn.Module):
     def __init__(self, num_classes=2, init_weights=False):
         super(DifferenceNet, self).__init__()
         self.features = nn.Sequential(
-            nn.Conv2d(3, 48, kernel_size=11, stride=4, padding=2),
+            nn.Conv2d(3, 48, kernel_size=11, stride=4, padding=2), # (224+4-11)/4+1=55
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=3, stride=2),  # output[48, 27, 27]
             nn.Conv2d(48, 128, kernel_size=5, padding=2),  # output[128, 27, 27]

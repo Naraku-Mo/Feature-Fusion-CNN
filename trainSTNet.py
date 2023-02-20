@@ -8,18 +8,21 @@ import torch.optim as optim
 from torch.optim import lr_scheduler
 from torch.utils.data import WeightedRandomSampler, DataLoader
 from torch.utils.tensorboard import SummaryWriter
-
-from config_shift import *
+import matplotlib.pyplot as plt
+from config_stn import *
 from dataset import BuildingDataset
 import pandas as pd
 from STNet import STNet
 import os
 from torchvision import transforms
+import numpy as np
+import torchvision
 
+plt.ion()
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
-    transforms.Normalize(mean = [0.891972, 0.93623203, 0.9399001], std = [0.16588122, 0.090553254, 0.12211764])
+    transforms.Normalize(mean=[0.891972, 0.93623203, 0.9399001], std=[0.16588122, 0.090553254, 0.12211764])
 ])
 transform_val = transforms.Compose([
     transforms.Resize((224, 224)),
@@ -30,13 +33,15 @@ transform_val = transforms.Compose([
     # test_area_train
     # transforms.Normalize(mean=[0.84431416, 0.9468392, 0.96895444], std = [0.2916492, 0.08882934, 0.098634705])
     # valid_test2
-    transforms.Normalize(mean = [0.8904361, 0.9363585, 0.94014686], std = [0.165799, 0.09002642, 0.12338792])
+    transforms.Normalize(mean=[0.8904361, 0.9363585, 0.94014686], std=[0.165799, 0.09002642, 0.12338792])
     # transforms.Normalize(mean = [0.8904361, 0.9363585, 0.94014686], std = [0.165799, 0.09002642, 0.12338792])
     # compareValid
     # transforms.Normalize(mean = [0.84808147, 0.9096524, 0.91053045], std = [0.20253241, 0.10373465, 0.14877456])
 ])
 
 df = pd.DataFrame(columns=['loss', 'accuracy'])
+
+
 # 定义训练函数
 def train(dataloader, model, loss_fn, optimizer, epoch):
     loss, current, n = 0.0, 0.0, 0
@@ -71,6 +76,7 @@ def train(dataloader, model, loss_fn, optimizer, epoch):
     writer.add_scalar('Train/Loss', loss / n, epoch)
     writer.add_scalar('Train/Acc', current / n, epoch)
 
+
 # 定义验证函数
 def val(dataloader, model, loss_fn, epoch):
     # 将模型转为验证模式
@@ -97,6 +103,46 @@ def val(dataloader, model, loss_fn, epoch):
     writer.add_scalar('Valid/Acc', current / n, epoch)
     df.loc[epoch] = {'loss': loss / n, 'accuracy': current / n}
     return current / n
+
+
+def convert_image_np(inp):
+    """Convert a Tensor to numpy image."""
+    inp = inp.numpy().transpose((1, 2, 0))  # 将颜色通道放到后面
+    mean = np.array([0.485, 0.456, 0.406])
+    std = np.array([0.229, 0.224, 0.225])
+    inp = std * inp + mean  # 用公式"(x-mean)/std"，将每个元素分布到(-1,1)，也就是标准化
+    inp = np.clip(inp, 0, 1)  # # clip这个函数将将数组中的元素限制在a_min, a_max之间，大于a_max的就使得它等于 a_max，小于a_min,的就使得它等于a_min
+    return inp
+
+
+# We want to visualize the output of the spatial transformers layer
+# after the training, we visualize a batch of input images and
+# the corresponding transformed batch using STN.
+
+
+def visualize_stn(model):
+    with torch.no_grad():
+        # Get a batch of training data
+        data = next(iter(train_loader))[0].to(device)
+
+        input_tensor = data.cpu()
+        tensor1 = model.stn(data)
+        transformed_input_tensor = model.stn(tensor1).cpu()
+
+        in_grid = convert_image_np(
+            torchvision.utils.make_grid(input_tensor))
+
+        out_grid = convert_image_np(
+            torchvision.utils.make_grid(transformed_input_tensor))
+
+        # Plot the results side-by-side
+        f, axarr = plt.subplots(1, 2)
+        axarr[0].imshow(in_grid)
+        axarr[0].set_title('Dataset Images')
+
+        axarr[1].imshow(out_grid)
+        axarr[1].set_title('Transformed Images')
+
 
 if __name__ == '__main__':
     s = f"Diffnet,{train_dir},{valid_dir},batch{BATCH_SIZE},lr{LR},wd{weight_decay}"
@@ -136,7 +182,7 @@ if __name__ == '__main__':
     # if torch.cuda.device_count() > 1:
     #     print("Use", torch.cuda.device_count(), 'gpus')
     #     net = nn.DataParallel(net)
-    net.to(device)
+    model = net.to(device)
 
     # 定义损失函数（交叉熵损失）
     loss_fn = nn.CrossEntropyLoss()
@@ -168,15 +214,17 @@ if __name__ == '__main__':
                 os.mkdir('save_model')
             min_acc = a
             print('save best model', )
-            torch.save(net.state_dict(), "save_model/shifted/best_model.pth")
+            torch.save(net.state_dict(), "save_model/stn/best_model.pth")
         # 保存最后的权重文件
-        torch.save(net.state_dict(), "save_model/shifted/every_model.pth")
+        torch.save(net.state_dict(), "save_model/stn/every_model.pth")
         if t == epoch - 1:
-            torch.save(net.state_dict(), "save_model/shifted/last_model.pth")
+            torch.save(net.state_dict(), "save_model/stn/last_model.pth")
         finish = time.time()
         time_elapsed = finish - start
         print('本次训练耗时 {:.0f}m {:.0f}s'.format(
             time_elapsed // 60, time_elapsed % 60))
-
+    visualize_stn(model)
+    plt.ioff()
+    plt.show()
     print(f'** Finished Training **')
     df.to_csv('runs/train.txt', index=True, sep=';')

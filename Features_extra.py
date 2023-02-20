@@ -50,7 +50,7 @@ if __name__ == '__main__':
             os.mkdir(save_feature_path1)
         extractors(test_img1, save_feature_path1, net1)
     net2 = ShiftNet(num_classes=2, init_weights=True)
-    net2.load_state_dict(torch.load(r'save_model\different\last_model.pth'))
+    net2.load_state_dict(torch.load(r'save_model\shifted\last_model.pth'))
     net2.cuda()
     for jpeg in os.listdir(image_dir2):
         test_img2 = os.path.join(image_dir2, jpeg)
