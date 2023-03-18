@@ -65,8 +65,12 @@ class STNet(nn.Module):
     def stn(self, x):
         # Localisation net
         xs = self.localization(x)  # 卷积
-        xs = xs.view(-1, 10 * 52 * 52)  # resize
+        xs = xs.view(-1, 10 * 52 * 52)  # resize Tensor维度重构
         theta = self.fc_loc(xs)  # 全连接（6个参数）
+        print("修改前的theta：", theta)
+        theta[0:1, 1:2] = 0  # 只位移和缩放，不旋转
+        theta[1:, 0:1] = 0
+        print("修改后的theta:", theta)
         theta = theta.view(-1, 2, 3)
         # Grid generator
         grid = F.affine_grid(theta, x.size())

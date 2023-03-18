@@ -30,5 +30,7 @@ weight_decay = 0.00005
 milestones = [30, 50, 70]
 # milestones = [7,28,70,150]
 gamma = 0.1
+weight_decay_f = 0.00001
+milestones = [50,70,90,110]
 ## the path of data for prediction
 pred_dir = 'valid_shift'

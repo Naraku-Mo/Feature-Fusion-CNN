@@ -1,10 +1,9 @@
-# -- coding:utf-8
-"""Configuration of Alexnet
+"""Configuration of Googlenet
 """
 
 # configuration of different
-weight_path = r'save_model/different\best_model.pth\\'  # path to the weigths
-alexnet_path = r'save_model/different\best_model.pth\\'  # path to the net
+weight_path = r'../../本地深度学习项目/Feature-Fusion-CNN-master/save_model/different/best_model.pth\\'  # path to the weigths
+alexnet_path = r'../../本地深度学习项目/Feature-Fusion-CNN-master/save_model/different/best_model.pth\\'  # path to the net
 N_FEATURES = 2
 
 # params of training

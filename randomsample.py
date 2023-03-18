@@ -17,7 +17,7 @@ def moveFile(fileDir, tarDir):
 
 
 if __name__ == '__main__':
-    fileDir = r'E:\Naraku\Feature-Fusion-CNN\train_shift\0\\'  # 源图片文件夹路径
+    fileDir = r'D:\TrainCNN\Feature-Fusion-CNN\train_diff\0\\'  # 源图片文件夹路径
     # fileDir = r'E:\Naraku\experiment\isShifted\train_stn(whole）\1\\'  # 源图片文件夹路径
-    tarDir = r'E:\Naraku\Feature-Fusion-CNN\valid_shift\0\\'  # 移动到新的文件夹路径
+    tarDir = r'ED:\TrainCNN\Feature-Fusion-CNN\valid_diff\0\\'  # 移动到新的文件夹路径
     moveFile(fileDir, tarDir)
