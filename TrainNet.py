@@ -16,10 +16,12 @@ from torch.utils.tensorboard import SummaryWriter
 from dataset import BuildingDataset
 import pandas as pd
 
-from DifferenceNet import DifferenceNet
-from config_diff import *
+# from DifferenceNet import DifferenceNet
+# from config_diff import *
 # from STNet import STNet
 # from config_stn import *
+from ShiftNet import ShiftNet
+from config_shift import *
 import os
 # from focal_loss import focal_loss
 from torch.utils.data import WeightedRandomSampler
@@ -28,22 +30,36 @@ import torchmetrics
 
 from trainSTNet import convert_image_np
 
-plt.ion()
+# plt.ion()
+# 固定随机数种子
+seed = 123
+torch.manual_seed(seed)
+torch.cuda.manual_seed(seed)
+np.random.seed(seed)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
-    # transforms.RandomHorizontalFlip(),
+    transforms.RandomHorizontalFlip(),
     transforms.ToTensor(),
     # function_test_20
     # transforms.Normalize(mean=[0.9318218, 0.9599232, 0.96266234], std=[0.13674922, 0.07559318, 0.09820192])
-
+    # train_stn
+    # transforms.Normalize(mean=[0.8988469, 0.93813044, 0.9376824], std=[0.17884357, 0.09582038, 0.13065177])
+    # train_shift
+    transforms.Normalize(mean=[0.89731014, 0.9391688, 0.9396487], std=[0.18013711, 0.09479259, 0.12887895])
 ])
 transform_val = transforms.Compose([
     transforms.Resize((224, 224)),
-    # transforms.RandomHorizontalFlip(),
+    transforms.RandomHorizontalFlip(),
     transforms.ToTensor(),
     # test_rect_train
     # transforms.Normalize(mean = [0.70381516, 0.8888911, 0.92238843], std =  [0.40284097, 0.11763619, 0.15052465])
-
+    # valid_stn
+    # transforms.Normalize(mean=[0.8980922, 0.9372042, 0.93724376], std=[0.18020877, 0.09663033, 0.13077204])
+    # valid_shift
+    transforms.Normalize(mean=[0.89881814, 0.9392697, 0.9402372], std=[0.17823705, 0.09425104, 0.12656842])
 ])
 
 df = pd.DataFrame(columns=['loss', 'accuracy'])
@@ -53,9 +69,12 @@ df = pd.DataFrame(columns=['loss', 'accuracy'])
 def train(dataloader, model, loss_fn, optimizer, epoch):
     loss, current, n = 0.0, 0.0, 0
     # test_acc = torchmetrics.Accuracy().to(device)
+    # 定义正则化项
+    # l1_lambda = 0.0001
+    # l2_lambda = 0.0001
     test_recall = torchmetrics.Recall(average='none', num_classes=N_FEATURES).to(device)
     test_precision = torchmetrics.Precision(average='none', num_classes=N_FEATURES).to(device)
-    test_F1 = torchmetrics.F1(num_classes=N_FEATURES, average='none').to(device)
+    test_F1 = torchmetrics.F1Score(num_classes=N_FEATURES, average='none').to(device)
     model.train()
     # enumerate返回为数据和标签还有批次
     for batch, (X, y) in enumerate(dataloader):
@@ -63,19 +82,24 @@ def train(dataloader, model, loss_fn, optimizer, epoch):
         X, y = X.to(device), y.to(device)
         # print(y)
         # print(type(y))
-        output, output2, output1 = model(X)
-        # output = model(X)
+        # output, output2, output1 = model(X)
+        output = model(X)
         cur_loss0 = loss_fn(output, y)
-        cur_loss1 = loss_fn(output1, y)
-        cur_loss2 = loss_fn(output2, y)
+        # 添加正则化项
+        # l1_norm = torch.norm(torch.cat([x.view(-1) for x in model.parameters()]), 1)
+        # l2_norm = torch.norm(torch.cat([x.view(-1) for x in model.parameters()]), 2)
+        # loss = loss + l1_lambda * l1_norm + l2_lambda * l2_norm
+
+        # cur_loss1 = loss_fn(output1, y)
+        # cur_loss2 = loss_fn(output2, y)
         # output1 = output.squeeze(-1)
         # cur_loss = loss_fn(output1, y.float())
         # torch.max返回每行最大的概率和最大概率的索引,由于批次是16，所以返回16个概率和索引
         _, pred = torch.max(output, axis=1)
         # 计算每批次的准确率， output.shape[0]为该批次的多少
         cur_acc = torch.sum(y == pred) / output.shape[0]
-        cur_loss = cur_loss0 + cur_loss1 * 0.3 + cur_loss2 * 0.3
-
+        cur_loss = cur_loss0  # + cur_loss1 * 0.3 + cur_loss2 * 0.3
+        #
         # test_acc(pred.argmax(1), y)
         # test_recall = test_recall.to(device)
         # test_precision = test_precision.to(device)
@@ -88,8 +112,8 @@ def train(dataloader, model, loss_fn, optimizer, epoch):
 
         # 反向传播
         optimizer.zero_grad()
-        cur_loss.backward()
-        optimizer.step()
+        cur_loss.backward() # 反向传播
+        optimizer.step() # 更新模型参数
         # 取出loss值和精度值
         loss += cur_loss.item()
         current += cur_acc.item()
@@ -121,7 +145,7 @@ def val(dataloader, model, loss_fn, epoch):
     loss, current, n = 0.0, 0.0, 0
     test_recall = torchmetrics.Recall(average='none', num_classes=N_FEATURES).to(device)
     test_precision = torchmetrics.Precision(average='none', num_classes=N_FEATURES).to(device)
-    test_F1 = torchmetrics.F1(average='none', num_classes=N_FEATURES).to(device)
+    test_F1 = torchmetrics.F1Score(average='none', num_classes=N_FEATURES).to(device)
     # 非训练，推理期用到（测试时模型参数不用更新， 所以no_grad）
     # print(torch.no_grad)
     with torch.no_grad():
@@ -167,7 +191,7 @@ def visualize_stn(model):
 
         input_tensor = data.cpu()
         #tensor1 = model.stn(data)
-        transformed_input_tensor = model.stn(input_tensor).cpu()
+        transformed_input_tensor = model.stn(data).cpu()
 
         in_grid = convert_image_np(
             torchvision.utils.make_grid(input_tensor))
@@ -184,15 +208,12 @@ def visualize_stn(model):
         axarr[1].set_title('Transformed Images')
 
 if __name__ == '__main__':
-    s = f"googlenet,{train_dir},{valid_dir},batch{BATCH_SIZE},lr{LR},wd{weight_decay_f}"
+    s = f"Shiftnet,{train_dir},{valid_dir},batch{BATCH_SIZE},lr{LR},wd{weight_decay_f}"
     writer = SummaryWriter(comment=s)
     # build MyDataset
     # class_sample_counts = [32412,3984] # test_rect_train
-    # class_sample_counts = [38220, 5328] # fixtrain_test2
-    # class_sample_counts = [33444,4128] #function_test_5
-    # class_sample_counts = [33456,4128] #function_test_10
-    # class_sample_counts = [36432, 4344] # function_test_20_old
-    class_sample_counts = [33444, 4128]  # function_test_20
+    # class_sample_counts = [1385, 381]  # train_stn
+    class_sample_counts = [2464, 1053]  # train_shift
     weights = 1. / torch.tensor(class_sample_counts, dtype=torch.float)
     # 这个 get_classes_for_all_imgs是关键
     train_data = BuildingDataset(data_dir=train_dir, transform=transform)
@@ -208,16 +229,17 @@ if __name__ == '__main__':
     valid_loader = DataLoader(dataset=valid_data, batch_size=BATCH_SIZE, num_workers=0, pin_memory=True, shuffle=True)
     # AlexNet model and training
     # net = AlexNet(num_classes=N_FEATURES, init_weights=True)
-    net = DifferenceNet(num_classes=N_FEATURES, init_weights=True, aux_logits=True)
-    # net = STNet(num_classes=N_FEATURES, init_weights=True, aux_logits=True)
+    # net = DifferenceNet(num_classes=N_FEATURES, init_weights=True, aux_logits=True)
+    # net = STNet(num_classes=N_FEATURES, init_weights=True)
+    net = ShiftNet(num_classes=N_FEATURES, init_weights=True)
     # 模拟输入数据，进行网络可视化
     # input_data = Variable(torch.rand(16, 3, 224, 224))
     # with writer:
     #     writer.add_graph(net, (input_data,))
     # 模型进入GPU
-    if torch.cuda.device_count() > 1:
-        print("Use", torch.cuda.device_count(), 'gpus')
-        net = nn.DataParallel(net)
+    # if torch.cuda.device_count() > 1:
+    #     print("Use", torch.cuda.device_count(), 'gpus')
+    #     net = nn.DataParallel(net)
     model = net.to(device)
 
     # 定义损失函数（交叉熵损失）
@@ -227,7 +249,7 @@ if __name__ == '__main__':
 
     # 定义优化器,SGD,
     # optimizer = optim.Adam(net.parameters(), lr=LR, weight_decay=weight_decay_f)
-    optimizer = optimizer = optim.SGD(net.parameters(), lr=LR, momentum=0.9, weight_decay=weight_decay_f)
+    optimizer = optim.SGD(net.parameters(), lr=LR, momentum=0.9, weight_decay=weight_decay_f)
     # 学习率每隔10epoch变为原来的0.1
     # lr_scheduler = lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.1)
     lr_scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=milestones, gamma=0.1)
@@ -247,22 +269,22 @@ if __name__ == '__main__':
         if a > min_acc:
             folder = 'save_model'
             if not os.path.exists(folder):
-                os.mkdir('../../本地深度学习项目/Feature-Fusion-CNN-master/save_model')
+                os.mkdir('../../TrainCNN/Feature-Fusion-CNN-master/save_model')
             min_acc = a
             print('save best model', )
-            torch.save(net.state_dict(), "save_model/googleNet/best_model.pth")
-        torch.save(net.state_dict(), "save_model/googleNet/every_model.pth")
-        if float(a) < float(85):
-            torch.save(net.state_dict(), "save_model/googleNet/lunwen_model.pth")
+            torch.save(net.state_dict(), "save_model/shift/best_model.pth")
+        torch.save(net.state_dict(), "save_model/shift/every_model.pth")
+        # if float(a) < float(85):
+        #     torch.save(net.state_dict(), "save_model/stn/lunwen_model.pth")
         # 保存最后的权重文件
         if t == epoch - 1:
-            torch.save(net.state_dict(), "save_model/googleNet/last_model.pth")
+            torch.save(net.state_dict(), "save_model/shift/last_model.pth")
         finish = time.time()
         time_elapsed = finish - start
         print('本次训练耗时 {:.0f}m {:.0f}s'.format(
             time_elapsed // 60, time_elapsed % 60))
-        visualize_stn(model)
-        plt.ioff()
-        plt.show()
+    # visualize_stn(model)
+    # plt.ioff()
+    # plt.show()
     print(f'** Finished Training **')
-    df.to_csv('runs/train_focal.txt', index=True, sep=';')
+    df.to_csv('runs/train.txt', index=True, sep=';')

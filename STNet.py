@@ -12,6 +12,7 @@ import torch.nn.functional as F
 class STNet(nn.Module):
     def __init__(self, num_classes=2, init_weights=False):
         super(STNet, self).__init__()
+        self.theta_fixed = 0
         self.features = nn.Sequential(
             nn.Conv2d(3, 48, kernel_size=11, stride=4, padding=2),  # (224+4-11)/4+1=55
             nn.ReLU(inplace=True),
@@ -67,11 +68,11 @@ class STNet(nn.Module):
         xs = self.localization(x)  # 卷积
         xs = xs.view(-1, 10 * 52 * 52)  # resize Tensor维度重构
         theta = self.fc_loc(xs)  # 全连接（6个参数）
-        print("修改前的theta：", theta)
-        theta[0:1, 1:2] = 0  # 只位移和缩放，不旋转
-        theta[1:, 0:1] = 0
-        print("修改后的theta:", theta)
         theta = theta.view(-1, 2, 3)
+        #print("修改前的theta：", theta)
+        theta[:,0:1, 1:2] = self.theta_fixed  # 只位移和缩放，不旋转
+        theta[:,1:, 0:1] = self.theta_fixed
+        #print("修改后的theta:", theta)
         # Grid generator
         grid = F.affine_grid(theta, x.size())
         # Sampler

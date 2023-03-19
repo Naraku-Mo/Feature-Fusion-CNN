@@ -5,6 +5,7 @@ import time
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torchmetrics
 from torch.optim import lr_scheduler
 from torch.utils.data import WeightedRandomSampler, DataLoader
 from torch.utils.tensorboard import SummaryWriter
@@ -19,10 +20,20 @@ import numpy as np
 import torchvision
 
 plt.ion()
+# 固定随机数种子
+seed = 123
+torch.manual_seed(seed)
+torch.cuda.manual_seed(seed)
+np.random.seed(seed)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
+    transforms.RandomHorizontalFlip(),
     transforms.ToTensor(),
-    transforms.Normalize(mean=[0.891972, 0.93623203, 0.9399001], std=[0.16588122, 0.090553254, 0.12211764])
+    # train_stn
+    transforms.Normalize(mean=[0.89734197, 0.9392724, 0.9398877], std=[0.17993543, 0.094597824, 0.12841283])
 ])
 transform_val = transforms.Compose([
     transforms.Resize((224, 224)),
@@ -32,8 +43,8 @@ transform_val = transforms.Compose([
     # transforms.Normalize(mean = [0.70381516, 0.8888911, 0.92238843], std =  [0.40284097, 0.11763619, 0.15052465])
     # test_area_train
     # transforms.Normalize(mean=[0.84431416, 0.9468392, 0.96895444], std = [0.2916492, 0.08882934, 0.098634705])
-    # valid_test2
-    transforms.Normalize(mean=[0.8904361, 0.9363585, 0.94014686], std=[0.165799, 0.09002642, 0.12338792])
+    # valid_stn
+    transforms.Normalize(mean=[0.8980922, 0.9372042, 0.93724376], std=[0.18020877, 0.09663033, 0.13077204])
     # transforms.Normalize(mean = [0.8904361, 0.9363585, 0.94014686], std = [0.165799, 0.09002642, 0.12338792])
     # compareValid
     # transforms.Normalize(mean = [0.84808147, 0.9096524, 0.91053045], std = [0.20253241, 0.10373465, 0.14877456])
@@ -45,6 +56,9 @@ df = pd.DataFrame(columns=['loss', 'accuracy'])
 # 定义训练函数
 def train(dataloader, model, loss_fn, optimizer, epoch):
     loss, current, n = 0.0, 0.0, 0
+    test_recall = torchmetrics.Recall(average='none', num_classes=N_FEATURES).to(device)
+    test_precision = torchmetrics.Precision(average='none', num_classes=N_FEATURES).to(device)
+    test_F1 = torchmetrics.F1Score(num_classes=N_FEATURES, average='none').to(device)
     model.train()
     # enumerate返回为数据和标签还有批次
     for batch, (X, y) in enumerate(dataloader):
@@ -59,6 +73,11 @@ def train(dataloader, model, loss_fn, optimizer, epoch):
 
         # 计算每批次的准确率， output.shape[0]为该批次的多少
         cur_acc = torch.sum(y == pred) / output.shape[0]
+
+        # test_acc(output.argmax(1), y)
+        test_F1(output.argmax(1), y)
+        test_recall(output.argmax(1), y)
+        test_precision(output.argmax(1), y)
         # 反向传播
         optimizer.zero_grad()
         cur_loss.backward()
@@ -68,13 +87,22 @@ def train(dataloader, model, loss_fn, optimizer, epoch):
         current += cur_acc.item()
         n = n + 1
         rate = (batch + 1) / train_num
-        writer.add_scalar('Train/Loss_batch', cur_loss, epoch * len(dataloader) + n)
-        # writer.add_scalar('Train/acc', cur_loss, optimizer.param_groups[0]['lr'])
-        # print(f"train loss: {rate * 100:.1f}%,{cur_loss:.3f}")
+    total_recall = test_recall.compute()
+    total_precision = test_precision.compute()
+    total_F1 = test_F1.compute()
+    # total_acc = test_acc.compute()
     print(f"train_loss' : {(loss / n):.3f}  train_acc : {(current / n):.3f}")
-    # print(f"train_acc' : {(current / n):.3f}")
+    print("recall of every test dataset class: ", total_recall)
+    print("precision of every test dataset class: ", total_precision)
+    print("F1 of every test dataset class: ", total_F1)
     writer.add_scalar('Train/Loss', loss / n, epoch)
     writer.add_scalar('Train/Acc', current / n, epoch)
+    writer.add_scalar('Train/Recall', total_recall[1].item(), epoch)
+    writer.add_scalar('Train/Precision', total_precision[1].item(), epoch)
+    writer.add_scalar('Train/F1', total_F1[1].item(), epoch)
+    test_precision.reset()
+    test_recall.reset()
+    test_F1.reset()
 
 
 # 定义验证函数
@@ -82,6 +110,9 @@ def val(dataloader, model, loss_fn, epoch):
     # 将模型转为验证模式
     model.eval()
     loss, current, n = 0.0, 0.0, 0
+    test_recall = torchmetrics.Recall(average='none', num_classes=N_FEATURES).to(device)
+    test_precision = torchmetrics.Precision(average='none', num_classes=N_FEATURES).to(device)
+    test_F1 = torchmetrics.F1Score(average='none', num_classes=N_FEATURES).to(device)
     # 非训练，推理期用到（测试时模型参数不用更新， 所以no_grad）
     # print(torch.no_grad)
     with torch.no_grad():
@@ -91,16 +122,29 @@ def val(dataloader, model, loss_fn, epoch):
             cur_loss = loss_fn(output, y)
             # output1 = output.squeeze(-1)
             # cur_loss = loss_fn(output1, y.float())
+            test_F1(output.argmax(1), y)
+            test_recall(output.argmax(1), y)
+            test_precision(output.argmax(1), y)
             _, pred = torch.max(output, axis=1)
             cur_acc = torch.sum(y == pred) / output.shape[0]
             loss += cur_loss.item()
             current += cur_acc.item()
             n = n + 1
-            # writer.add_scalar('Valid/valid_batch', cur_loss, epoch*len(dataloader)+n)
-        print(f"valid_loss' : {(loss / n):.3f}  valid_acc : {(current / n):.3f}")
-        # print(f"valid_acc' : {(current / n):.3f}")
+    total_recall = test_recall.compute()
+    total_precision = test_precision.compute()
+    total_F1 = test_F1.compute()
+    print(f"valid_loss' : {(loss / n):.3f}  valid_acc : {(current / n):.3f}")
+    print("recall of every test dataset class: ", total_recall)
+    print("precision of every test dataset class: ", total_precision)
+    print("F1 of every test dataset class: ", total_F1)
     writer.add_scalar('Valid/Loss', loss / n, epoch)
     writer.add_scalar('Valid/Acc', current / n, epoch)
+    writer.add_scalar('Valid/Recall', total_recall[1].item(), epoch)
+    writer.add_scalar('Valid/Precision', total_precision[1].item(), epoch)
+    writer.add_scalar('Valid/F1', total_F1[1].item(), epoch)
+    test_precision.reset()
+    test_recall.reset()
+    test_F1.reset()
     df.loc[epoch] = {'loss': loss / n, 'accuracy': current / n}
     return current / n
 
@@ -126,8 +170,8 @@ def visualize_stn(model):
         data = next(iter(train_loader))[0].to(device)
 
         input_tensor = data.cpu()
-        tensor1 = model.stn(data)
-        transformed_input_tensor = model.stn(tensor1).cpu()
+        #tensor1 = model.stn(data)
+        transformed_input_tensor = model.stn(input_tensor).cpu()
 
         in_grid = convert_image_np(
             torchvision.utils.make_grid(input_tensor))
@@ -145,11 +189,11 @@ def visualize_stn(model):
 
 
 if __name__ == '__main__':
-    s = f"Diffnet,{train_dir},{valid_dir},batch{BATCH_SIZE},lr{LR},wd{weight_decay}"
+    s = f"STNnet,{train_dir},{valid_dir},batch{BATCH_SIZE},lr{LR},wd{weight_decay}"
     writer = SummaryWriter(comment=s)
     # build MyDataset
     # class_sample_counts = [33288,4128] #compareTrain
-    class_sample_counts = [38220, 5328]  # fixtrain_test2
+    class_sample_counts = [3257, 381]  # train_stn
     # class_sample_counts = [32412,3984] # test_rect_train
     # class_sample_counts = [38220, 5328]
     # class_sample_counts = [15028,1832]
@@ -191,7 +235,7 @@ if __name__ == '__main__':
 
     # 定义优化器,SGD,
     # optimizer = optim.Adam(net.parameters(), lr=LR,weight_decay=weight_decay)
-    optimizer = optimizer = optim.SGD(net.parameters(), lr=LR, momentum=0.9)
+    optimizer = optimizer = optim.SGD(net.parameters(), lr=LR, momentum=0.9, weight_decay=weight_decay_f)
 
     # 学习率按数组自定义变化
     lr_scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=milestones, gamma=gamma)
