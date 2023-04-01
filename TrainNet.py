@@ -18,10 +18,12 @@ import pandas as pd
 
 # from DifferenceNet import DifferenceNet
 # from config_diff import *
-# from STNet import STNet
-# from config_stn import *
-from ShiftNet import ShiftNet
-from config_shift import *
+from STNet import STNet
+from config_stn import *
+# from ShiftNet import ShiftNet
+# from config_shift import *
+# from DifferenceNet import DifferenceNet
+# from config_diff import *
 import os
 # from focal_loss import focal_loss
 from torch.utils.data import WeightedRandomSampler
@@ -39,6 +41,8 @@ np.random.seed(seed)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
+
+
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.RandomHorizontalFlip(),
@@ -48,7 +52,14 @@ transform = transforms.Compose([
     # train_stn
     # transforms.Normalize(mean=[0.8988469, 0.93813044, 0.9376824], std=[0.17884357, 0.09582038, 0.13065177])
     # train_shift
-    transforms.Normalize(mean=[0.89731014, 0.9391688, 0.9396487], std=[0.18013711, 0.09479259, 0.12887895])
+    # transforms.Normalize(mean=[0.89731014, 0.9391688, 0.9396487], std=[0.18013711, 0.09479259, 0.12887895])
+    # origin_diff
+    # transforms.Normalize(mean=[0.9251727, 0.95890087, 0.9619809], std=[0.14847293, 0.07731944, 0.101800375])
+    # Rect
+    # transforms.Normalize(mean=[0.89755714, 0.9391525, 0.9397381], std=[0.17983419, 0.09473699, 0.12850754])
+    # Area
+    # transforms.Normalize(mean=[0.9328658, 0.96335715, 0.96645814], std=[0.13745053, 0.07245668, 0.0951552])
+
 ])
 transform_val = transforms.Compose([
     transforms.Resize((224, 224)),
@@ -59,7 +70,12 @@ transform_val = transforms.Compose([
     # valid_stn
     # transforms.Normalize(mean=[0.8980922, 0.9372042, 0.93724376], std=[0.18020877, 0.09663033, 0.13077204])
     # valid_shift
-    transforms.Normalize(mean=[0.89881814, 0.9392697, 0.9402372], std=[0.17823705, 0.09425104, 0.12656842])
+    # transforms.Normalize(mean=[0.89881814, 0.9392697, 0.9402372], std=[0.17823705, 0.09425104, 0.12656842])
+    # valid_Rect
+    # transforms.Normalize(mean=[0.89588183, 0.93902767, 0.9395471], std=[0.18102294, 0.09464688, 0.1290733])
+    # valid_Area
+    # transforms.Normalize(mean=[0.9347815, 0.96474624, 0.9671215], std=[0.13583878, 0.07196212, 0.09568332])
+
 ])
 
 df = pd.DataFrame(columns=['loss', 'accuracy'])
@@ -112,8 +128,8 @@ def train(dataloader, model, loss_fn, optimizer, epoch):
 
         # 反向传播
         optimizer.zero_grad()
-        cur_loss.backward() # 反向传播
-        optimizer.step() # 更新模型参数
+        cur_loss.backward()  # 反向传播
+        optimizer.step()  # 更新模型参数
         # 取出loss值和精度值
         loss += cur_loss.item()
         current += cur_acc.item()
@@ -183,6 +199,7 @@ def val(dataloader, model, loss_fn, epoch):
     df.loc[epoch] = {'loss': loss / n, 'accuracy': current / n}
     return current / n
 
+
 # stn可视化函数
 def visualize_stn(model):
     with torch.no_grad():
@@ -190,7 +207,7 @@ def visualize_stn(model):
         data = next(iter(train_loader))[0].to(device)
 
         input_tensor = data.cpu()
-        #tensor1 = model.stn(data)
+        # tensor1 = model.stn(data)
         transformed_input_tensor = model.stn(data).cpu()
 
         in_grid = convert_image_np(
@@ -207,13 +224,17 @@ def visualize_stn(model):
         axarr[1].imshow(out_grid)
         axarr[1].set_title('Transformed Images')
 
+
 if __name__ == '__main__':
-    s = f"Shiftnet,{train_dir},{valid_dir},batch{BATCH_SIZE},lr{LR},wd{weight_decay_f}"
+    s = f"Difftnet,{train_dir},{valid_dir},batch{BATCH_SIZE},lr{LR},wd{weight_decay_f}"
     writer = SummaryWriter(comment=s)
     # build MyDataset
     # class_sample_counts = [32412,3984] # test_rect_train
     # class_sample_counts = [1385, 381]  # train_stn
-    class_sample_counts = [2464, 1053]  # train_shift
+    # class_sample_counts = [2464, 1053]  # train_shift
+    # class_sample_counts = [7804, 603]  # origin_diff
+    class_sample_counts = [3118, 281]  # Area or Rect
+
     weights = 1. / torch.tensor(class_sample_counts, dtype=torch.float)
     # 这个 get_classes_for_all_imgs是关键
     train_data = BuildingDataset(data_dir=train_dir, transform=transform)
@@ -229,9 +250,9 @@ if __name__ == '__main__':
     valid_loader = DataLoader(dataset=valid_data, batch_size=BATCH_SIZE, num_workers=0, pin_memory=True, shuffle=True)
     # AlexNet model and training
     # net = AlexNet(num_classes=N_FEATURES, init_weights=True)
-    # net = DifferenceNet(num_classes=N_FEATURES, init_weights=True, aux_logits=True)
-    # net = STNet(num_classes=N_FEATURES, init_weights=True)
-    net = ShiftNet(num_classes=N_FEATURES, init_weights=True)
+    # net = DifferenceNet(num_classes=N_FEATURES, init_weights=True)
+    net = STNet(num_classes=N_FEATURES, init_weights=True)
+    # net = ShiftNet(num_classes=N_FEATURES, init_weights=True)
     # 模拟输入数据，进行网络可视化
     # input_data = Variable(torch.rand(16, 3, 224, 224))
     # with writer:
@@ -266,19 +287,19 @@ if __name__ == '__main__':
         lr_scheduler.step()
         print("目前学习率:", optimizer.param_groups[0]['lr'])
         # 保存最好的模型权重文件
-        if a > min_acc:
-            folder = 'save_model'
-            if not os.path.exists(folder):
-                os.mkdir('../../TrainCNN/Feature-Fusion-CNN-master/save_model')
-            min_acc = a
-            print('save best model', )
-            torch.save(net.state_dict(), "save_model/shift/best_model.pth")
-        torch.save(net.state_dict(), "save_model/shift/every_model.pth")
+        # if a > min_acc:
+        #     folder = 'save_model'
+        #     if not os.path.exists(folder):
+        #         os.mkdir('../../TrainCNN/Feature-Fusion-CNN-master/save_model')
+        #     min_acc = a
+        # print('save best model', )
+        # torch.save(net.state_dict(), "save_model/different/best_model.pth")
+        # torch.save(net.state_dict(), "save_model/different/every_model.pth")
         # if float(a) < float(85):
         #     torch.save(net.state_dict(), "save_model/stn/lunwen_model.pth")
         # 保存最后的权重文件
-        if t == epoch - 1:
-            torch.save(net.state_dict(), "save_model/shift/last_model.pth")
+        # if t == epoch - 1:
+        # torch.save(net.state_dict(), "save_model/different/last_model.pth")
         finish = time.time()
         time_elapsed = finish - start
         print('本次训练耗时 {:.0f}m {:.0f}s'.format(

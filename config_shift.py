@@ -3,13 +3,13 @@
 """
 
 # configuration of shifted
-weight_path = r'save_model/shifted\best_model.pth\\'  # path to the weigths
-alexnet_path = r'save_model/shifted\best_model.pth\\'  # path to the net
+weight_path = r'save_model/shift\best_model.pth\\'  # path to the weigths
+alexnet_path = r'save_model/shift\best_model.pth\\'  # path to the net
 N_FEATURES = 2
 
 # params of training
 MAX_EPOCH = 150
-BATCH_SIZE = 10
+BATCH_SIZE = 50
 
 LR = 0.0001
 device = 'cuda:0'

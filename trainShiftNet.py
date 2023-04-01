@@ -152,11 +152,11 @@ def val(dataloader, model, loss_fn, epoch):
     return current / n
 
 if __name__ == '__main__':
-    s = f"Diffnet,{train_dir},{valid_dir},batch{BATCH_SIZE},lr{LR},wd{weight_decay}"
+    s = f"Shiftnet,{train_dir},{valid_dir},batch{BATCH_SIZE},lr{LR},wd{weight_decay}"
     writer = SummaryWriter(comment=s)
     # build MyDataset
     # class_sample_counts = [33288,4128] #compareTrain
-    class_sample_counts = [38220, 5328]  # fixtrain_test2
+    # class_sample_counts = [38220, 5328]  # fixtrain_test2
     # class_sample_counts = [32412,3984] # test_rect_train
     # class_sample_counts = [38220, 5328]
     # class_sample_counts = [15028,1832]
@@ -164,6 +164,7 @@ if __name__ == '__main__':
     # class_sample_counts = [45084,5496]
     # class_sample_counts = [46876,6264] # 数据集不同类别的比例
     # class_sample_counts = [46008,5794,1042]
+    class_sample_counts = [2464, 1053]  # train_shift
     weights = 1. / torch.tensor(class_sample_counts, dtype=torch.float)
     # 这个 get_classes_for_all_imgs是关键
     train_data = BuildingDataset(data_dir=train_dir, transform=transform)

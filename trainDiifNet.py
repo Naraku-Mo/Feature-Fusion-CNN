@@ -97,7 +97,7 @@ def val(dataloader, model, loss_fn, epoch):
     return current / n
 
 if __name__ == '__main__':
-    s = f"different,{train_dir},{valid_dir},batch{BATCH_SIZE},lr{LR},wd{weight_decay}"
+    s = f"DiffNet,{train_dir},{valid_dir},batch{BATCH_SIZE},lr{LR},wd{weight_decay}"
     writer = SummaryWriter(comment=s)
     # build MyDataset
     # class_sample_counts = [33288,4128] #compareTrain

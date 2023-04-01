@@ -9,9 +9,9 @@ N_FEATURES = 2
 
 # params of training
 MAX_EPOCH = 150
-BATCH_SIZE = 64
+BATCH_SIZE = 16
 
-LR = 0.001
+LR = 0.0001
 device = 'cuda:0'
 
 # configuration of decission tree
@@ -20,9 +20,9 @@ tree_path = 'dt.pkl'
 
 # data path
 # the path of training data
+train_dir = "Area"
 # train_dir = "train_stn"
-train_dir = "train_stn"
-valid_dir = "valid_stn"
+valid_dir = "valid_Area"
 # valid_dir=pathlib.Path("valid")
 
 # SGD参数
