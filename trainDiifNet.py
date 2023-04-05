@@ -3,6 +3,7 @@ import time
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torchmetrics
 from torch.optim import lr_scheduler
 from torch.utils.data import WeightedRandomSampler, DataLoader
 from torch.utils.tensorboard import SummaryWriter
@@ -12,23 +13,38 @@ from dataset import BuildingDataset
 import pandas as pd
 from DifferenceNet import DifferenceNet
 import os
+import numpy as np
 from torchvision import transforms
+
+# 固定随机数种子
+seed = 123
+torch.manual_seed(seed)
+torch.cuda.manual_seed(seed)
+np.random.seed(seed)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomRotation(45),
     transforms.ToTensor(),
-    transforms.Normalize(mean = [0.891972, 0.93623203, 0.9399001], std = [0.16588122, 0.090553254, 0.12211764])
+    # origin_diff
+    transforms.Normalize(mean=[0.9251727, 0.95890087, 0.9619809], std=[0.14847293, 0.07731944, 0.101800375])
 ])
 transform_val = transforms.Compose([
     transforms.Resize((224, 224)),
-    # transforms.RandomHorizontalFlip(),
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomRotation(45),
     transforms.ToTensor(),
+    # valid_diff
+    transforms.Normalize(mean=[0.9262576, 0.9596687, 0.9627389], std=[0.1469692, 0.07660995, 0.10082596])
     # test_rect_train
     # transforms.Normalize(mean = [0.70381516, 0.8888911, 0.92238843], std =  [0.40284097, 0.11763619, 0.15052465])
     # test_area_train
     # transforms.Normalize(mean=[0.84431416, 0.9468392, 0.96895444], std = [0.2916492, 0.08882934, 0.098634705])
     # valid_test2
-    transforms.Normalize(mean = [0.8904361, 0.9363585, 0.94014686], std = [0.165799, 0.09002642, 0.12338792])
+    # transforms.Normalize(mean = [0.8904361, 0.9363585, 0.94014686], std = [0.165799, 0.09002642, 0.12338792])
     # transforms.Normalize(mean = [0.8904361, 0.9363585, 0.94014686], std = [0.165799, 0.09002642, 0.12338792])
     # compareValid
     # transforms.Normalize(mean = [0.84808147, 0.9096524, 0.91053045], std = [0.20253241, 0.10373465, 0.14877456])
@@ -38,6 +54,9 @@ df = pd.DataFrame(columns=['loss', 'accuracy'])
 # 定义训练函数
 def train(dataloader, model, loss_fn, optimizer, epoch):
     loss, current, n = 0.0, 0.0, 0
+    test_recall = torchmetrics.Recall(average='none', num_classes=N_FEATURES).to(device)
+    test_precision = torchmetrics.Precision(average='none', num_classes=N_FEATURES).to(device)
+    test_F1 = torchmetrics.F1Score(num_classes=N_FEATURES, average='none').to(device)
     model.train()
     # enumerate返回为数据和标签还有批次
     for batch, (X, y) in enumerate(dataloader):
@@ -52,6 +71,9 @@ def train(dataloader, model, loss_fn, optimizer, epoch):
 
         # 计算每批次的准确率， output.shape[0]为该批次的多少
         cur_acc = torch.sum(y == pred) / output.shape[0]
+        test_F1(output.argmax(1), y)
+        test_recall(output.argmax(1), y)
+        test_precision(output.argmax(1), y)
         # 反向传播
         optimizer.zero_grad()
         cur_loss.backward()
@@ -61,19 +83,32 @@ def train(dataloader, model, loss_fn, optimizer, epoch):
         current += cur_acc.item()
         n = n + 1
         rate = (batch + 1) / train_num
-        writer.add_scalar('Train/Loss_batch', cur_loss, epoch * len(dataloader) + n)
-        # writer.add_scalar('Train/acc', cur_loss, optimizer.param_groups[0]['lr'])
-        # print(f"train loss: {rate * 100:.1f}%,{cur_loss:.3f}")
+    total_recall = test_recall.compute()
+    total_precision = test_precision.compute()
+    total_F1 = test_F1.compute()
+    # total_acc = test_acc.compute()
     print(f"train_loss' : {(loss / n):.3f}  train_acc : {(current / n):.3f}")
-    # print(f"train_acc' : {(current / n):.3f}")
+    print("recall of every test dataset class: ", total_recall)
+    print("precision of every test dataset class: ", total_precision)
+    print("F1 of every test dataset class: ", total_F1)
     writer.add_scalar('Train/Loss', loss / n, epoch)
     writer.add_scalar('Train/Acc', current / n, epoch)
+    writer.add_scalar('Train/Recall', total_recall[1].item(), epoch)
+    writer.add_scalar('Train/Precision', total_precision[1].item(), epoch)
+    writer.add_scalar('Train/F1', total_F1[1].item(), epoch)
+    test_precision.reset()
+    test_recall.reset()
+    test_F1.reset()
+
 
 # 定义验证函数
 def val(dataloader, model, loss_fn, epoch):
     # 将模型转为验证模式
     model.eval()
     loss, current, n = 0.0, 0.0, 0
+    test_recall = torchmetrics.Recall(average='none', num_classes=N_FEATURES).to(device)
+    test_precision = torchmetrics.Precision(average='none', num_classes=N_FEATURES).to(device)
+    test_F1 = torchmetrics.F1Score(average='none', num_classes=N_FEATURES).to(device)
     # 非训练，推理期用到（测试时模型参数不用更新， 所以no_grad）
     # print(torch.no_grad)
     with torch.no_grad():
@@ -83,16 +118,29 @@ def val(dataloader, model, loss_fn, epoch):
             cur_loss = loss_fn(output, y)
             # output1 = output.squeeze(-1)
             # cur_loss = loss_fn(output1, y.float())
+            test_F1(output.argmax(1), y)
+            test_recall(output.argmax(1), y)
+            test_precision(output.argmax(1), y)
             _, pred = torch.max(output, axis=1)
             cur_acc = torch.sum(y == pred) / output.shape[0]
             loss += cur_loss.item()
             current += cur_acc.item()
             n = n + 1
-            # writer.add_scalar('Valid/valid_batch', cur_loss, epoch*len(dataloader)+n)
-        print(f"valid_loss' : {(loss / n):.3f}  valid_acc : {(current / n):.3f}")
-        # print(f"valid_acc' : {(current / n):.3f}")
+    total_recall = test_recall.compute()
+    total_precision = test_precision.compute()
+    total_F1 = test_F1.compute()
+    print(f"valid_loss' : {(loss / n):.3f}  valid_acc : {(current / n):.3f}")
+    print("recall of every test dataset class: ", total_recall)
+    print("precision of every test dataset class: ", total_precision)
+    print("F1 of every test dataset class: ", total_F1)
     writer.add_scalar('Valid/Loss', loss / n, epoch)
     writer.add_scalar('Valid/Acc', current / n, epoch)
+    writer.add_scalar('Valid/Recall', total_recall[1].item(), epoch)
+    writer.add_scalar('Valid/Precision', total_precision[1].item(), epoch)
+    writer.add_scalar('Valid/F1', total_F1[1].item(), epoch)
+    test_precision.reset()
+    test_recall.reset()
+    test_F1.reset()
     df.loc[epoch] = {'loss': loss / n, 'accuracy': current / n}
     return current / n
 
@@ -101,14 +149,14 @@ if __name__ == '__main__':
     writer = SummaryWriter(comment=s)
     # build MyDataset
     # class_sample_counts = [33288,4128] #compareTrain
-    class_sample_counts = [38220, 5328]  # fixtrain_test2
+    # class_sample_counts = [38220, 5328]  # fixtrain_test2
     # class_sample_counts = [32412,3984] # test_rect_train
     # class_sample_counts = [38220, 5328]
     # class_sample_counts = [15028,1832]
     # class_sample_counts = [15394,1832]
     # class_sample_counts = [45084,5496]
     # class_sample_counts = [46876,6264] # 数据集不同类别的比例
-    # class_sample_counts = [46008,5794,1042]
+    class_sample_counts = [7804,603] # origin_diff
     weights = 1. / torch.tensor(class_sample_counts, dtype=torch.float)
     # 这个 get_classes_for_all_imgs是关键
     train_data = BuildingDataset(data_dir=train_dir, transform=transform)
@@ -143,7 +191,7 @@ if __name__ == '__main__':
 
     # 定义优化器,SGD,
     # optimizer = optim.Adam(net.parameters(), lr=LR,weight_decay=weight_decay)
-    optimizer = optimizer = optim.SGD(net.parameters(), lr=LR, momentum=0.9)
+    optimizer = optim.SGD(net.parameters(), lr=LR, momentum=0.9)
 
     # 学习率按数组自定义变化
     lr_scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=milestones, gamma=gamma)
@@ -166,11 +214,11 @@ if __name__ == '__main__':
                 os.mkdir('save_model')
             min_acc = a
             print('save best model', )
-            torch.save(net.state_dict(), "save_model/different/best_model.pth")
+            torch.save(net.state_dict(), "save_model/diff2/best_model.pth")
         # 保存最后的权重文件
-        torch.save(net.state_dict(), "save_model/different/every_model.pth")
+        torch.save(net.state_dict(), "save_model/diff2/every_model.pth")
         if t == epoch - 1:
-            torch.save(net.state_dict(), "save_model/different/last_model.pth")
+            torch.save(net.state_dict(), "save_model/diff2/last_model.pth")
         finish = time.time()
         time_elapsed = finish - start
         print('本次训练耗时 {:.0f}m {:.0f}s'.format(

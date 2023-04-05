@@ -14,7 +14,7 @@ class STNet(nn.Module):
         super(STNet, self).__init__()
         self.theta_fixed = 0
         self.features = nn.Sequential(
-            nn.Conv2d(3, 48, kernel_size=11, stride=4, padding=2),  # (224+4-11)/4+1=55
+            nn.Conv2d(6, 48, kernel_size=11, stride=4, padding=2),  # (224+4-11)/4+1=55
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=3, stride=2),  # output[48, 27, 27]
             nn.Conv2d(48, 128, kernel_size=5, padding=2),  # output[128, 27, 27]
@@ -29,10 +29,10 @@ class STNet(nn.Module):
             nn.MaxPool2d(kernel_size=3, stride=2),  # output[128, 6, 6],
         )
         self.classifier = nn.Sequential(
-            nn.Dropout(p=0.5),
+            nn.Dropout(p=0.7),
             nn.Linear(128 * 6 * 6, 2048),
             nn.ReLU(inplace=True),
-            nn.Dropout(p=0.5),
+            nn.Dropout(p=0.7),
             nn.Linear(2048, 2048),
             nn.ReLU(inplace=True),
             nn.Linear(2048, num_classes),
@@ -76,30 +76,30 @@ class STNet(nn.Module):
         # Grid generator
         grid = F.affine_grid(theta, x.size())
         # Sampler
-        x = F.grid_sample(x, grid)
-        # x1 = F.grid_sample(x, grid)
+        # x = F.grid_sample(x, grid)
+        x1 = F.grid_sample(x, grid)
         # 两个并行的STN
         # Localisation net
-        # xs2 = self.localization(x)  # 卷积
-        # xs2 = xs2.view(-1, 10 * 52 * 52)  # resize Tensor维度重构
-        # theta2 = self.fc_loc(xs2)  # 全连接（6个参数）
-        # theta2 = theta2.view(-1, 2, 3)
+        xs2 = self.localization(x)  # 卷积
+        xs2 = xs2.view(-1, 10 * 52 * 52)  # resize Tensor维度重构
+        theta2 = self.fc_loc(xs2)  # 全连接（6个参数）
+        theta2 = theta2.view(-1, 2, 3)
         # print("修改前的theta：", theta)
         # theta2[:, 0:1, 1:2] = self.theta_fixed  # 只位移和缩放，不旋转
         # theta2[:, 1:, 0:1] = self.theta_fixed
         # print("修改后的theta:", theta)
         # Grid generator
-        # grid2 = F.affine_grid(theta2, x.size())
+        grid2 = F.affine_grid(theta2, x.size())
         # Sampler
-        # x2 = F.grid_sample(x, grid2)
-        return x, theta
-        # return x1, x2, theta
+        x2 = F.grid_sample(x, grid2)
+        # return x, theta
+        return x1, x2
 
     def forward(self, x):
         # transform the input
-        x, theta = self.stn(x)
+        x1,x2= self.stn(x)
         # x1, x2, theta = self.stn(x)
-        # x = torch.cat((x1, x2), dim=0)
+        x = torch.cat((x1, x2), dim=1)
         # x = self.stn(x)
         # Perform the usual forward pass（transformer后再丢到模型里训练）
         x = self.features(x)  # 特征提取

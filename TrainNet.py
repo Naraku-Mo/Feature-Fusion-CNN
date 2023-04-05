@@ -101,10 +101,6 @@ def train(dataloader, model, loss_fn, optimizer, epoch):
         # output, output2, output1 = model(X)
         output = model(X)
         cur_loss0 = loss_fn(output, y)
-        # 添加正则化项
-        # l1_norm = torch.norm(torch.cat([x.view(-1) for x in model.parameters()]), 1)
-        # l2_norm = torch.norm(torch.cat([x.view(-1) for x in model.parameters()]), 2)
-        # loss = loss + l1_lambda * l1_norm + l2_lambda * l2_norm
 
         # cur_loss1 = loss_fn(output1, y)
         # cur_loss2 = loss_fn(output2, y)

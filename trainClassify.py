@@ -20,6 +20,13 @@ from sklearn.metrics import classification_report
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 
+# 固定随机数种子
+seed = 123
+torch.manual_seed(seed)
+torch.cuda.manual_seed(seed)
+np.random.seed(seed)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 
 N_FEATURES = 2
 device = 'cuda:0'
@@ -58,9 +65,17 @@ class DiffImgDataset(Dataset):
             imgs_list = sorted(imgs_list, key=lambda x: x[1], reverse=True)[:4]
         elif len(imgs_list) < 4:
             while len(imgs_list) < 4:
-                imgs_list.append(random.choice(imgs_list))
+                # imgs_list.append(("null", 0)) # 方法一：补0
+                imgs_list.append(random.choice(imgs_list)) # 方法二：随机复制
         imgs = []
         for img_name, label in imgs_list:
+            # if img_name is not "null":
+            #     img_path = os.path.join(self.img_dir, img_name)
+            #     img = Image.open(img_path).convert('RGB')
+            #     if self.transform:
+            #         img = self.transform(img)
+            # elif img_name is "null":
+            #     img = torch.zeros([3,224, 224])
             img_path = os.path.join(self.img_dir, img_name)
             img = Image.open(img_path).convert('RGB')
             if self.transform:
@@ -104,19 +119,20 @@ def extract_features(model, dataloader):
     model.eval()
     with torch.no_grad():
         for data in dataloader:
-            imgs, id_nums, labels = data
+            imgs, id_nums = data
             batch_size = imgs.size(0)
             imgs = imgs.view(-1, 3, 224, 224)
             features = model(imgs)
             features = features.view(batch_size, -1)
             for i in range(batch_size):
-                features_dict[id_nums[i].item()] = (features[i].cpu().numpy(), labels[i].item())
+                features_dict[id_nums[i].item()] = (features[i].cpu().numpy()) #, labels[i].item())
     return features_dict
 
 
 # shiftimg_dir = 'train_shift'
 diffimg_dir = 'train_diff'
-difffeatures_dir = 'diff_features'
+difffeatures_dir = 'diff_features' # （1）随机复制
+# difffeatures_dir = 'diff_features0' # （2）缺失维度补0
 shiftfeatures_dir = 'shift_features'
 if not os.path.exists(difffeatures_dir):
     os.makedirs(difffeatures_dir)
@@ -136,7 +152,7 @@ ShiftNet.load_state_dict(torch.load(r'save_model\shift\last_model.pth'))
 
 # features_diff = extract_features(model=DiffNet, dataloader=diffimgloader)
 # for id_num in tqdm(features_diff):
-#     feature_path = os.path.join(features_dir, f'id{id_num}.npy')
+#     feature_path = os.path.join(difffeatures_dir0, f'id{id_num}.npy')
 #     np.save(feature_path, features_diff[id_num])
 
 # features_shift = extract_features(model=ShiftNet, dataloader=shiftimgloader)
@@ -166,25 +182,23 @@ for file_name in tqdm(os.listdir(shiftfeatures_dir)):
         # 提取 id
         id = file_name.split('id')[1].split('ex')[0]
         label = int(file_name.split('ex')[1].split('.')[0])
-        if label==0:
-            label=0
-        elif label!=0:
-            label =1
+        if label == 0:
+            label = 0
+        elif label != 0:
+            label = 1
         # 读取特征
-        diff_filename=f'id{id}.npy'
+        diff_filename = f'id{id}.npy'
         if diff_filename in os.listdir(difffeatures_dir):
             diff_feature = np.load(os.path.join(difffeatures_dir, diff_filename))
         shift_feature = np.load(os.path.join(shiftfeatures_dir, file_name))
         # 融合特征
-        fusion_features_dict[id]=np.concatenate((shift_feature, diff_feature), axis=0)
+        fusion_features_dict[id] = np.concatenate((shift_feature, diff_feature), axis=0)
         labels_dict[id] = label
         # if id in features_shift:
         #     fusion_features_dict[id] = (
         #     np.concatenate((features_shift[id][0], difffeature), axis=0), features_shift[id][1])
         # else:
         #     fusion_features_dict[id] = (difffeature, features_shift[id][1])
-
-
 
 # 准备 SVM 输入数据
 X = []
@@ -200,7 +214,7 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_
 # 计算类别权重
 class_weight = compute_class_weight('balanced', classes=np.unique(y_train), y=y_train)
 cw = dict(enumerate(class_weight))
-writer = SummaryWriter()
+# writer = SummaryWriter()
 # 训练 SVM 模型并输出结果
 clf = svm.SVC(class_weight=cw)
 clf.fit(X_train, y_train)
@@ -209,8 +223,8 @@ y_test_pred = clf.predict(X_test)
 
 # 计算分类评价指标
 target_names = ['class 0', 'class 1']
-print(classification_report(y_train, y_train_pred, target_names=target_names))
-print(classification_report(y_test, y_test_pred, target_names=target_names))
+print(classification_report(y_train, y_train_pred, target_names=target_names,digits=4))
+print(classification_report(y_test, y_test_pred, target_names=target_names,digits=4))
 # t_accuracy = accuracy_score(y_train, y_train_pred)
 # t_precision = precision_score(y_train, y_train_pred)
 # t_recall = recall_score(y_train, y_train_pred)

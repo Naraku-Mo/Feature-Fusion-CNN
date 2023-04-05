@@ -12,15 +12,14 @@ from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
 from config_stn import *
 from dataset import BuildingDataset
-from CUBdataset import CUB
+# from CUBdataset import CUB
 import pandas as pd
 import torch.nn.functional as F
-# from STNet import STNet
-from STNGooNet import STNGoogLeNet
+from STNet import STNet
 import os
 from torchvision import transforms
 import numpy as np
-import transformsCUB
+# import transformsCUB
 import torchvision
 from matplotlib.patches import Rectangle
 
@@ -40,22 +39,31 @@ TRAIN_STD = [0.2321024260764962, 0.22770540015765814, 0.2665100547329813]
 TEST_MEAN = [0.4862169586881995, 0.4998156522834164, 0.4311430419332438]
 TEST_STD = [0.23264268069040475, 0.22781080253662814, 0.26667253517177186]
 
-transform = transformsCUB.Compose([
-    transformsCUB.Resize((224, 224)),
-    transformsCUB.RandomHorizontalFlip(),
-    transformsCUB.ToTensor(),
+transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomRotation(90),
+    transforms.ToTensor(),
     # train_stn
     # transforms.Normalize(mean=[0.89734197, 0.9392724, 0.9398877], std=[0.17993543, 0.094597824, 0.12841283])
     # Area
     # transforms.Normalize(mean=[0.9328658, 0.96335715, 0.96645814], std=[0.13745053, 0.07245668, 0.0951552])
+    # function_test_20_old
+    # transforms.Normalize(mean=[0.9318218, 0.9599232, 0.96266234], std=[0.13674922, 0.07559318, 0.09820192])
+    # function_test_20
+    transforms.Normalize(mean=[0.933881, 0.957784, 0.9582756], std=[0.13598508, 0.07826422, 0.10344314])
     # CUB-200-2011鸟类数据集
-    transformsCUB.ToCVImage(),
-    transformsCUB.Normalize(TRAIN_MEAN, TRAIN_STD)
+    # transformsCUB.ToCVImage(),
+    # transformsCUB.RandomResizedCrop(224),
+    # transformsCUB.RandomHorizontalFlip(),
+    # transformsCUB.ToTensor(),
+    # transformsCUB.Normalize(TRAIN_MEAN, TRAIN_STD)
 ])
 transform_val = transforms.Compose([
-    transformsCUB.Resize((224, 224)),
-    transformsCUB.RandomHorizontalFlip(),
-    transformsCUB.ToTensor(),
+    transforms.Resize((224, 224)),
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomRotation(90),
+    transforms.ToTensor(),
     # test_rect_train
     # transforms.Normalize(mean = [0.70381516, 0.8888911, 0.92238843], std =  [0.40284097, 0.11763619, 0.15052465])
     # test_area_train
@@ -67,9 +75,14 @@ transform_val = transforms.Compose([
     # transforms.Normalize(mean = [0.84808147, 0.9096524, 0.91053045], std = [0.20253241, 0.10373465, 0.14877456])
     # valid_Area
     # transforms.Normalize(mean=[0.9347815, 0.96474624, 0.9671215], std=[0.13583878, 0.07196212, 0.09568332])
+    # function_test_20
+    transforms.Normalize(mean=[0.92881185, 0.95924205, 0.96284324], std=[0.13795583, 0.07532157, 0.09843103])
+
     # CUB-200-2011鸟类数据集
-    transforms.ToCVImage(),
-    transforms.Normalize(TEST_MEAN, TEST_STD)
+    # transformsCUB.ToCVImage(),
+    # transformsCUB.Resize(224),
+    # transformsCUB.ToTensor(),
+    # transformsCUB.Normalize(TEST_MEAN, TEST_STD)
 ])
 
 df = pd.DataFrame(columns=['loss', 'accuracy'])
@@ -86,16 +99,18 @@ def train(dataloader, model, loss_fn, optimizer, epoch):
     for batch, (X, y) in enumerate(dataloader):
         # 前向传播
         X, y = X.to(device), y.to(device)
-        output = model(X)
-        cur_loss = loss_fn(output, y)
-        # output1 = output.squeeze(-1)
-        # cur_loss = loss_fn(output1, y.float())
+        # output = model(X)
+        output, output2, output1 = model(X)
+        cur_loss0 = loss_fn(output, y)
+        cur_loss1 = loss_fn(output1, y)
+        cur_loss2 = loss_fn(output2, y)
+
         # torch.max返回每行最大的概率和最大概率的索引,由于批次是16，所以返回16个概率和索引
         _, pred = torch.max(output, axis=1)
 
         # 计算每批次的准确率， output.shape[0]为该批次的多少
         cur_acc = torch.sum(y == pred) / output.shape[0]
-
+        cur_loss = cur_loss0+ cur_loss1 * 0.3 + cur_loss2 * 0.3
         # test_acc(output.argmax(1), y)
         test_F1(output.argmax(1), y)
         test_recall(output.argmax(1), y)
@@ -141,14 +156,14 @@ def val(dataloader, model, loss_fn, epoch):
         for batch, (X, y) in enumerate(dataloader):
             X, y = X.to(device), y.to(device)
             output = model(X)
-            cur_loss = loss_fn(output, y)
             # output1 = output.squeeze(-1)
-            # cur_loss = loss_fn(output1, y.float())
+            cur_loss = loss_fn(output, y)
             test_F1(output.argmax(1), y)
             test_recall(output.argmax(1), y)
             test_precision(output.argmax(1), y)
             _, pred = torch.max(output, axis=1)
             cur_acc = torch.sum(y == pred) / output.shape[0]
+
             loss += cur_loss.item()
             current += cur_acc.item()
             n = n + 1
@@ -242,6 +257,7 @@ def visualize_stn(model):
                                   edgecolor='green',
                                   linewidth=3.5)
             ax.add_patch(rect)
+            ax.add_patch(rect2)
             #
             # x_min2 = attention_corners2[i, :, 0].min()
             # x_max2 = attention_corners2[i, :, 0].max()
@@ -274,59 +290,63 @@ def visualize_stn(model):
 
 
 if __name__ == '__main__':
-    s = f"STNGooglenet,{train_dir},{valid_dir},batch{BATCH_SIZE},lr{LR},wd{weight_decay}"
+    s = f"GoogleNet,{train_dir},{valid_dir},batch{BATCH_SIZE},lr{LR},wd{weight_decay}"
     writer = SummaryWriter(comment=s)
     # build MyDataset
     # class_sample_counts = [33288,4128] #compareTrain
     # class_sample_counts = [3257, 381]  # train_stn
-    class_sample_counts = [3118, 281]  # Area or Rect
+    # class_sample_counts = [33444, 4128]  # function_test_20_old
+    class_sample_counts = [8376, 4128]  # function_test_20
+    # class_sample_counts = [3118, 281]  # Area or Rect
     weights = 1. / torch.tensor(class_sample_counts, dtype=torch.float)
     # 建筑数据集读取
     # 这个 get_classes_for_all_imgs是关键
-    # train_data = BuildingDataset(data_dir=train_dir, transform=transform)
-    # train_targets = train_data.get_classes_for_all_imgs()
-    # samples_weights = weights[train_targets]
-    # sampler = WeightedRandomSampler(weights=samples_weights, num_samples=len(samples_weights), replacement=True)
-    #
-    # valid_data = BuildingDataset(data_dir=valid_dir, transform=transform_val)
-    #
-    # # build DataLoader
-    # train_loader = DataLoader(dataset=train_data, batch_size=BATCH_SIZE, shuffle=False, num_workers=4,
-    #                           pin_memory=True, sampler=sampler)
-    # valid_loader = DataLoader(dataset=valid_data, batch_size=BATCH_SIZE, num_workers=4, pin_memory=True,
-    #                           shuffle=True)
+    train_data = BuildingDataset(data_dir=train_dir, transform=transform)
+    train_targets = train_data.get_classes_for_all_imgs()
+    samples_weights = weights[train_targets]
+    sampler = WeightedRandomSampler(weights=samples_weights, num_samples=len(samples_weights), replacement=True)
+
+    valid_data = BuildingDataset(data_dir=valid_dir, transform=transform_val)
+
+    # build DataLoader
+    train_loader = DataLoader(dataset=train_data, batch_size=BATCH_SIZE, shuffle=False, num_workers=4,
+                              pin_memory=True, sampler=sampler)
+    valid_loader = DataLoader(dataset=valid_data, batch_size=BATCH_SIZE, num_workers=4, pin_memory=True,
+                              shuffle=True)
     # CUB鸟类数据集读取
-    train_dataset = CUB(
-        path,
-        train=True,
-        transform=transform,
-        target_transform=None
-    )
-    # print(len(train_dataset))
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=BATCH_SIZE,
-        num_workers=4,
-        shuffle=True
-    )
-
-    test_dataset = CUB(
-        path,
-        train=False,
-        transform=transform_val,
-        target_transform=None
-    )
-
-    valid_loader = DataLoader(
-        test_dataset,
-        batch_size=BATCH_SIZE,
-        num_workers=4,
-        shuffle=True
-    )
+    # train_dataset = CUB(
+    #     path,
+    #     train=True,
+    #     transform=transform,
+    #     target_transform=None
+    # )
+    # # print(len(train_dataset))
+    # train_loader = DataLoader(
+    #     train_dataset,
+    #     batch_size=BATCH_SIZE,
+    #     num_workers=4,
+    #     shuffle=True
+    # )
+    #
+    # test_dataset = CUB(
+    #     path,
+    #     train=False,
+    #     transform=transform_val,
+    #     target_transform=None
+    # )
+    #
+    # valid_loader = DataLoader(
+    #     test_dataset,
+    #     batch_size=BATCH_SIZE,
+    #     num_workers=4,
+    #     shuffle=True
+    # )
 
     # AlexNet model and training
+    # net = LeNet5(num_classes=N_FEATURES)
     # net = STNet(num_classes=N_FEATURES, init_weights=True)
-    net = STNGoogLeNet(num_classes=N_FEATURES)
+    # net = STNGoogLeNet(num_classes=N_FEATURES)
+    net = GoogLeNet(num_classes=N_FEATURES)
     # 模拟输入数据，进行网络可视化
     # input_data = Variable(torch.rand(16, 3, 224, 224))
     # with writer:
@@ -347,7 +367,7 @@ if __name__ == '__main__':
 
     # 定义优化器,SGD,
     # optimizer = optim.Adam(net.parameters(), lr=LR,weight_decay=weight_decay)
-    optimizer = optimizer = optim.SGD(net.parameters(), lr=LR, momentum=0.9, weight_decay=weight_decay_f)
+    optimizer = optim.SGD(net.parameters(), lr=LR, momentum=0.9, weight_decay=weight_decay_f)
 
     # 学习率按数组自定义变化
     lr_scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=milestones, gamma=gamma)
@@ -379,8 +399,8 @@ if __name__ == '__main__':
         time_elapsed = finish - start
         print('本次训练耗时 {:.0f}m {:.0f}s'.format(
             time_elapsed // 60, time_elapsed % 60))
-    visualize_stn(model)
-    plt.ioff()
-    plt.show()
+    # visualize_stn(model)
+    # plt.ioff()
+    # plt.show()
     print(f'** Finished Training **')
     df.to_csv('runs/train.txt', index=True, sep=';')

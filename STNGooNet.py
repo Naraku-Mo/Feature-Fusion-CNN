@@ -13,7 +13,7 @@ class STNGoogLeNet(nn.Module):
         super(STNGoogLeNet, self).__init__()
         self.aux_logits = aux_logits
 
-        self.conv1 = BasicConv2d(3, 64, kernel_size=7, stride=2, padding=3)
+        self.conv1 = BasicConv2d(6, 64, kernel_size=7, stride=2, padding=3)
         self.maxpool1 = nn.MaxPool2d(3, stride=2, ceil_mode=True)
 
         self.conv2 = BasicConv2d(64, 64, kernel_size=1)
@@ -99,8 +99,9 @@ class STNGoogLeNet(nn.Module):
 
     def forward(self, x):
         x1, x2 = self.stn(x)
-        x = torch.cat((x1, x2), dim=0)
-        # N x 3 x 224 x 224
+        # x1, x2, theta = self.stn(x)
+        x = torch.cat((x1, x2), dim=1)
+        # N x 3 x 224 x 224 -》 N x 6 x 224 x 224
         x = self.conv1(x)
         # N x 64 x 112 x 112
         x = self.maxpool1(x)

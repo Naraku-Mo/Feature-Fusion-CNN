@@ -11,7 +11,7 @@ N_FEATURES = 2
 MAX_EPOCH = 150
 BATCH_SIZE = 16
 
-LR = 0.0001
+LR = 0.00002
 device = 'cuda:0'
 
 # configuration of decission tree
@@ -20,13 +20,15 @@ tree_path = 'dt.pkl'
 
 # data path
 # the path of training data
-train_dir = "Area"
-# train_dir = "train_stn"
-valid_dir = "valid_Area"
+# train_dir = "Area"
+# valid_dir = "valid_Area"
+train_dir = "function_test_20"
+valid_dir = "function_test_20_val"
 # valid_dir=pathlib.Path("valid")
 
+
 # SGD参数
-weight_decay = 0.00005
+weight_decay = 0.00001
 # milestones = [7,28,70,150]
 gamma = 0.1
 weight_decay_f = 0.00001

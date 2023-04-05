@@ -20,10 +20,10 @@ tree_path = 'dt.pkl'
 
 # data path
 ## the path of training data
-# train_dir = "origin_diff"
-# valid_dir = "valid_diff"
-train_dir = "Rect"
-valid_dir = "valid_Rect"
+train_dir = "origin_diff"
+valid_dir = "valid_diff"
+# train_dir = "Rect"
+# valid_dir = "valid_Rect"
 ## valid_dir=pathlib.Path("valid")
 
 # SGD参数

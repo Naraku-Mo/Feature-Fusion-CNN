@@ -29,7 +29,9 @@ torch.backends.cudnn.benchmark = False
 
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
-    # transforms.RandomHorizontalFlip(),
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomVerticalFlip(),
+    transforms.RandomRotation(45),
     transforms.ToTensor(),
     # function_test_20
     # transforms.Normalize(mean=[0.9318218, 0.9599232, 0.96266234], std=[0.13674922, 0.07559318, 0.09820192])
@@ -40,7 +42,9 @@ transform = transforms.Compose([
 ])
 transform_val = transforms.Compose([
     transforms.Resize((224, 224)),
-    # transforms.RandomHorizontalFlip(),
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomVerticalFlip(),
+    transforms.RandomRotation(45),
     transforms.ToTensor(),
     # test_rect_train
     # transforms.Normalize(mean = [0.70381516, 0.8888911, 0.92238843], std =  [0.40284097, 0.11763619, 0.15052465])
