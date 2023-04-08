@@ -196,14 +196,31 @@ def convert_image_np(inp):
     return inp
 
 
-def attention(image):
-    attention_map = torch.sum(image, dim=1).to(device)
-    attention_map = attention_map / torch.max(attention_map)
-    x = torch.sum(attention_map, dim=2).to(device)
-    y = torch.sum(attention_map, dim=1).to(device)
-    x_c = torch.sum(x * torch.arange(x.size(1)).to(device)).to(device) / (torch.sum(x, dim=1)).to(device)
-    y_c = torch.sum(y * torch.arange(y.size(1)).to(device)).to(device) / (torch.sum(y, dim=1)).to(device)
-    return x_c, y_c
+def attention(feature_map):
+    # Flatten feature map spatial dimensions
+    batch_size, num_channels, height, width = feature_map.size()
+    feature_map_flat = feature_map.view(batch_size, num_channels, height * width)
+
+    # Compute self-attention using matrix multiplication
+    query = torch.matmul(feature_map_flat.transpose(1, 2), feature_map_flat)  # [batch_size, height*width, height*width]
+    key = torch.matmul(feature_map_flat, feature_map_flat.transpose(1, 2))  # [batch_size, num_channels, num_channels]
+    value = feature_map_flat  # [batch_size, num_channels, height*width]
+
+    # Compute attention weights using softmax
+    attention_weights = torch.softmax(query, dim=-1)  # [batch_size, height*width, height*width]
+
+    # Compute attention centers using weighted average
+    attention_centers = torch.bmm(value, attention_weights)  # [batch_size, num_channels, height*width]
+    attention_centers = attention_centers.view(batch_size, num_channels, height, width)
+
+    return attention_centers
+    # attention_map = torch.sum(image, dim=1).to(device)
+    # attention_map = attention_map / torch.max(attention_map)
+    # x = torch.sum(attention_map, dim=2).to(device)
+    # y = torch.sum(attention_map, dim=1).to(device)
+    # x_c = torch.sum(x * torch.arange(x.size(1)).to(device)).to(device) / (torch.sum(x, dim=1)).to(device)
+    # y_c = torch.sum(y * torch.arange(y.size(1)).to(device)).to(device) / (torch.sum(y, dim=1)).to(device)
+    # return x_c, y_c
 
 
 # We want to visualize the output of the spatial transformers layer

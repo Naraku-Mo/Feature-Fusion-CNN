@@ -12,6 +12,7 @@ from config_diff import *
 from dataset import BuildingDataset
 import pandas as pd
 from DifferenceNet import DifferenceNet
+from LeNet5 import LeNet5
 import os
 import numpy as np
 from torchvision import transforms
@@ -30,7 +31,7 @@ transform = transforms.Compose([
     transforms.RandomRotation(45),
     transforms.ToTensor(),
     # origin_diff
-    transforms.Normalize(mean=[0.9251727, 0.95890087, 0.9619809], std=[0.14847293, 0.07731944, 0.101800375])
+    transforms.Normalize(mean=[0.918039, 0.9500407, 0.9504322], std=[0.15249752, 0.08265463, 0.11152452])
 ])
 transform_val = transforms.Compose([
     transforms.Resize((224, 224)),
@@ -145,7 +146,7 @@ def val(dataloader, model, loss_fn, epoch):
     return current / n
 
 if __name__ == '__main__':
-    s = f"DiffNet,{train_dir},{valid_dir},batch{BATCH_SIZE},lr{LR},wd{weight_decay}"
+    s = f"DiffLeNet,{train_dir},{valid_dir},batch{BATCH_SIZE},lr{LR},wd{weight_decay}"
     writer = SummaryWriter(comment=s)
     # build MyDataset
     # class_sample_counts = [33288,4128] #compareTrain
@@ -156,7 +157,7 @@ if __name__ == '__main__':
     # class_sample_counts = [15394,1832]
     # class_sample_counts = [45084,5496]
     # class_sample_counts = [46876,6264] # 数据集不同类别的比例
-    class_sample_counts = [7804,603] # origin_diff
+    class_sample_counts = [7804,4824] # origin_diff
     weights = 1. / torch.tensor(class_sample_counts, dtype=torch.float)
     # 这个 get_classes_for_all_imgs是关键
     train_data = BuildingDataset(data_dir=train_dir, transform=transform)
@@ -172,7 +173,8 @@ if __name__ == '__main__':
     valid_loader = DataLoader(dataset=valid_data, batch_size=BATCH_SIZE, num_workers=4, pin_memory=True,
                               shuffle=True)
     # AlexNet model and training
-    net = DifferenceNet(num_classes=N_FEATURES, init_weights=True)
+    # net = DifferenceNet(num_classes=N_FEATURES, init_weights=True)
+    net =LeNet5(num_classes=N_FEATURES)
     # net = GoogleNet(num_class=N_FEATURES)
     # 模拟输入数据，进行网络可视化
     # input_data = Variable(torch.rand(16, 3, 224, 224))

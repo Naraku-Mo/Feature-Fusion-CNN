@@ -9,9 +9,9 @@ N_FEATURES = 2
 
 # params of training
 MAX_EPOCH = 150
-BATCH_SIZE = 50
+BATCH_SIZE = 16
 
-LR = 0.0001
+LR = 0.00001
 device = 'cuda:0'
 
 # configuration of decission tree

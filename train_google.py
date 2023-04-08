@@ -20,6 +20,7 @@ from torchvision import transforms
 import torchmetrics
 import matplotlib.pyplot as plt
 from STNGooNet import STNGoogLeNet
+import torch.nn.functional as F
 
 plt.ion()
 # 固定随机数种子
@@ -32,9 +33,10 @@ torch.backends.cudnn.benchmark = False
 
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
-    # transforms.RandomHorizontalFlip(),
+    transforms.RandomRotation(90),
+    transforms.RandomHorizontalFlip(),
     transforms.ToTensor(),
-     # test_rect_train
+    # test_rect_train
     # transforms.Normalize(mean = [0.70381516, 0.8888911, 0.92238843], std =  [0.40284097, 0.11763619, 0.15052465])
     # test_area_train
     # transforms.Normalize(mean=[0.84431416, 0.9468392, 0.96895444], std = [0.2916492, 0.08882934, 0.098634705])
@@ -47,13 +49,17 @@ transform = transforms.Compose([
     # function_test_20_old
     # transforms.Normalize(mean= [0.9318218, 0.9599232, 0.96266234], std=[0.13674922, 0.07559318, 0.09820192])
     # function_test_20
-    transforms.Normalize(mean=[0.933881, 0.957784, 0.9582756], std=[0.13598508, 0.07826422, 0.10344314])
+    # transforms.Normalize(mean=[0.933881, 0.957784, 0.9582756], std=[0.13598508, 0.07826422, 0.10344314])
+    # train_shift
+    # transforms.Normalize(mean=[0.89731014, 0.9391688, 0.9396487], std=[0.18013711, 0.09479259, 0.12887895])
+    # origin_diff
+    transforms.Normalize(mean=[0.918039, 0.9500407, 0.9504322], std=[0.15249752, 0.08265463, 0.11152452])
 ])
 transform_val = transforms.Compose([
     transforms.Resize((224, 224)),
-    # transforms.RandomHorizontalFlip(),
+    transforms.RandomHorizontalFlip(),
     transforms.ToTensor(),
-     # test_rect_train
+    # test_rect_train
     # transforms.Normalize(mean = [0.70381516, 0.8888911, 0.92238843], std =  [0.40284097, 0.11763619, 0.15052465])
     # test_area_train
     # transforms.Normalize(mean=[0.84431416, 0.9468392, 0.96895444], std = [0.2916492, 0.08882934, 0.098634705])
@@ -61,33 +67,36 @@ transform_val = transforms.Compose([
     # transforms.Normalize(mean = [0.8904361, 0.9363585, 0.94014686], std = [0.165799, 0.09002642, 0.12338792])
     # function_test_5_val
     # transforms.Normalize(mean=[0.67125416, 0.8375651, 0.8712284], std = [0.14200182, 0.064011395, 0.1304606])
-    #function_test_10
+    # function_test_10
     # transforms.Normalize(mean=[0.8215626, 0.8954368, 0.9014965], std = [0.19241227, 0.100563586, 0.14778145])
     # function_test_20_old
     # transforms.Normalize(mean= [0.85530734, 0.9493153, 0.96933824], std=[0.28664276, 0.087741055, 0.098699085])
-    #function_test_20
-    transforms.Normalize(mean= [0.92881185, 0.95924205, 0.96284324], std=[0.13795583, 0.07532157, 0.09843103])
-    
+    # function_test_20
+    # transforms.Normalize(mean=[0.92881185, 0.95924205, 0.96284324], std=[0.13795583, 0.07532157, 0.09843103])
+    # valid_shift
+    # transforms.Normalize(mean=[0.89881814, 0.9392697, 0.9402372], std=[0.17823705, 0.09425104, 0.12656842])
+    # valid_diff
+    transforms.Normalize(mean=[0.9262576, 0.9596687, 0.9627389], std=[0.1469692, 0.07660995, 0.10082596])
 ])
 
-
 df = pd.DataFrame(columns=['loss', 'accuracy'])
+
+
 # 定义训练函数
 def train(dataloader, model, loss_fn, optimizer, epoch):
     loss, current, n = 0.0, 0.0, 0
     # test_acc = torchmetrics.Accuracy().to(device)
     test_recall = torchmetrics.Recall(average='none', num_classes=N_FEATURES).to(device)
     test_precision = torchmetrics.Precision(average='none', num_classes=N_FEATURES).to(device)
-    test_F1 = torchmetrics.F1Score(num_classes=N_FEATURES,average='none').to(device)
+    test_F1 = torchmetrics.F1Score(num_classes=N_FEATURES, average='none').to(device)
     model.train()
     # enumerate返回为数据和标签还有批次
     for batch, (X, y) in enumerate(dataloader):
-        
         # 前向传播
         X, y = X.to(device), y.to(device)
         # print(y)
         # print(type(y))
-        output,output2,output1 = model(X)
+        output, output2, output1 = model(X)
         # output = model(X)
         cur_loss0 = loss_fn(output, y)
         cur_loss1 = loss_fn(output1, y)
@@ -98,7 +107,7 @@ def train(dataloader, model, loss_fn, optimizer, epoch):
         _, pred = torch.max(output, axis=1)
         # 计算每批次的准确率， output.shape[0]为该批次的多少
         cur_acc = torch.sum(y == pred) / output.shape[0]
-        cur_loss = cur_loss0 + cur_loss1 * 0.3 +cur_loss2 * 0.3
+        cur_loss = cur_loss0 + cur_loss1 * 0.3 + cur_loss2 * 0.3
 
         # test_acc(pred.argmax(1), y)
         # test_recall = test_recall.to(device)
@@ -109,7 +118,7 @@ def train(dataloader, model, loss_fn, optimizer, epoch):
         test_F1(output.argmax(1), y)
         test_recall(output.argmax(1), y)
         test_precision(output.argmax(1), y)
-    
+
         # 反向传播
         optimizer.zero_grad()
         cur_loss.backward()
@@ -130,12 +139,13 @@ def train(dataloader, model, loss_fn, optimizer, epoch):
     print("F1 of every test dataset class: ", total_F1)
     writer.add_scalar('Train/Loss', loss / n, epoch)
     writer.add_scalar('Train/Acc', current / n, epoch)
-    writer.add_scalar('Train/Recall',total_recall[1].item(), epoch)
-    writer.add_scalar('Train/Precision', total_precision[1].item(),epoch)
+    writer.add_scalar('Train/Recall', total_recall[1].item(), epoch)
+    writer.add_scalar('Train/Precision', total_precision[1].item(), epoch)
     writer.add_scalar('Train/F1', total_F1[1].item(), epoch)
     test_precision.reset()
     test_recall.reset()
     test_F1.reset()
+
 
 # 定义验证函数
 def val(dataloader, model, loss_fn, epoch):
@@ -144,7 +154,7 @@ def val(dataloader, model, loss_fn, epoch):
     loss, current, n = 0.0, 0.0, 0
     test_recall = torchmetrics.Recall(average='none', num_classes=N_FEATURES).to(device)
     test_precision = torchmetrics.Precision(average='none', num_classes=N_FEATURES).to(device)
-    test_F1 = torchmetrics.F1Score(average='none',num_classes=N_FEATURES).to(device)
+    test_F1 = torchmetrics.F1Score(average='none', num_classes=N_FEATURES).to(device)
     # 非训练，推理期用到（测试时模型参数不用更新， 所以no_grad）
     # print(torch.no_grad)
     with torch.no_grad():
@@ -173,14 +183,15 @@ def val(dataloader, model, loss_fn, epoch):
     print("F1 of every test dataset class: ", total_F1)
     writer.add_scalar('Valid/Loss', loss / n, epoch)
     writer.add_scalar('Valid/Acc', current / n, epoch)
-    writer.add_scalar('Valid/Recall',total_recall[1].item(), epoch)
-    writer.add_scalar('Valid/Precision', total_precision[1].item(),epoch)
+    writer.add_scalar('Valid/Recall', total_recall[1].item(), epoch)
+    writer.add_scalar('Valid/Precision', total_precision[1].item(), epoch)
     writer.add_scalar('Valid/F1', total_F1[1].item(), epoch)
     test_precision.reset()
     test_recall.reset()
     test_F1.reset()
-    df.loc[epoch] = {'loss':loss / n, 'accuracy':current / n}
-    return current/n
+    df.loc[epoch] = {'loss': loss / n, 'accuracy': current / n}
+    return current / n
+
 
 def convert_image_np(inp):
     """Convert a Tensor to numpy image."""
@@ -190,6 +201,8 @@ def convert_image_np(inp):
     inp = std * inp + mean  # 用公式"(x-mean)/std"，将每个元素分布到(-1,1)，也就是标准化
     inp = np.clip(inp, 0, 1)  # # clip这个函数将将数组中的元素限制在a_min, a_max之间，大于a_max的就使得它等于 a_max，小于a_min,的就使得它等于a_min
     return inp
+
+
 def attention(image):
     attention_map = torch.sum(image, dim=1).to(device)
     attention_map = attention_map / torch.max(attention_map)
@@ -210,15 +223,45 @@ def visualize_stn(model):
         data = next(iter(train_loader))[0]
         model.eval()
         # 使用STN模型得到变换后的图像和变换矩阵
-        transformed_data1, transformed_data2 = model.stn(data.to(device))
+        transformed_data1, transformed_data2, theta1, theta2 = model.stn(data.to(device))
         # transformed_data1, theta = model.stn(data.to(device))
         # transformed_data1, theta = model.stn(transformed_data0.to(device))
         batch_size, _, h, w = transformed_data1.shape
         # 计算图像注意力中心
-        x_center, y_center = attention(transformed_data1.to(device))
-        x_center2, y_center2 = attention(transformed_data2.to(device))
-        # attention_corners1,attention_corners2, batch_size = get_attention_box(model, device, data)
-        # 可视化注意力区域边界框（显示整个批次）
+        # x_center, y_center = attention(transformed_data1.to(device))
+        # x_center2, y_center2 = attention(transformed_data2.to(device))
+
+        # calculate the attention center coordinates for each example in the batch
+        attention_center_coordinates1 = []
+        attention_center_coordinates2 = []
+        for i in range(batch_size):
+            attention_map = transformed_data1[i, 0, :, :]
+            theta_center1 = theta1[i, :, :].flatten()
+            theta_center2 = theta2[i, :, :].flatten()
+            attention_weights = F.softmax(attention_map, dim=0)
+            attention_center_row = torch.sum(torch.arange(attention_map.size(0),
+                                                          device=attention_map.device).float() * attention_weights) / attention_map.size(
+                0)
+            attention_center_col = torch.sum(torch.arange(attention_map.size(1),
+                                                          device=attention_map.device).float() * attention_weights) / attention_map.size(
+                1)
+            center_p1 = torch.tensor([attention_center_row, attention_center_col]).to(device)
+            center_p1[0] = (center_p1[0] - theta_center1[2]) / theta_center1[0]
+            center_p1[1] = (center_p1[1] - theta_center1[5]) / theta_center1[4]
+            attention_center_coordinates1.append(torch.stack([center_p1[0], center_p1[1]]))
+            attention_map2 = transformed_data2[i, 0, :, :]
+            attention_weights2 = F.softmax(attention_map2, dim=0)
+            attention_center_row2 = torch.sum(torch.arange(attention_map2.size(0),
+                                                           device=attention_map2.device).float() * attention_weights2) / attention_map2.size(
+                0)
+            attention_center_col2 = torch.sum(torch.arange(attention_map2.size(1),
+                                                           device=attention_map2.device).float() * attention_weights2) / attention_map2.size(
+                1)
+            center_p2 = torch.tensor([attention_center_row2, attention_center_col2]).to(device)
+            center_p2[0] = (center_p2[0] - theta_center2[2]) / theta_center2[0]
+            center_p2[1] = (center_p2[1] - theta_center2[5]) / theta_center2[4]
+            attention_center_coordinates2.append(torch.stack([center_p2[0], center_p2[1]]))
+
         # 创建matplotlib的Figure和Axes对象
         fig, axs = plt.subplots(nrows=batch_size // 4 + (batch_size % 4 != 0),
                                 ncols=4,
@@ -226,22 +269,22 @@ def visualize_stn(model):
         for i in range(batch_size):
             ax = axs[i // 4, i % 4]
             ax.imshow(convert_image_np(data[i]))
-            x_c = x_center[i].item()
-            y_c = y_center[i].item()
-            x_c2 = x_center2[i].item()
-            y_c2 = y_center2[i].item()
-            # x0 = x_c-50
-            # y0 = y_c-50
-            # x1 = x_c+50
-            # y1 = y_c+50
-            x0 = max(0, x_c - 50)
-            y0 = max(0, y_c - 50)
-            x1 = min(w - 1, x_c + 50)
-            y1 = min(h - 1, y_c + 50)
-            x2_0 = max(0, x_c2 - 50)
-            y2_0 = max(0, y_c2 - 50)
-            x2_1 = min(w - 1, x_c2 + 50)
-            y2_1 = min(h - 1, y_c2 + 50)
+            attention_center_row1, attention_center_col1 = attention_center_coordinates1[i]
+            attention_center_row2, attention_center_col2 = attention_center_coordinates2[i]
+            attention_box_size = 64
+            x0 = int(attention_center_row1 - attention_box_size / 2 - 5)
+            y0 = int(attention_center_col1 - attention_box_size / 2 - 5)
+            x1 = int(attention_center_row1 + attention_box_size / 2 - 5)
+            y1 = int(attention_center_col1 + attention_box_size / 2 - 5)
+            x2_0 = int(attention_center_row2 - attention_box_size / 2)
+            y2_0 = int(attention_center_col2 - attention_box_size / 2)
+            x2_1 = int(attention_center_row2 + attention_box_size / 2)
+            y2_1 = int(attention_center_col2 + attention_box_size / 2)
+            # x_c = x_center[i].item()
+            # y_c = y_center[i].item()
+            # x_c2 = x_center2[i].item()
+            # y_c2 = y_center2[i].item()
+
             rect = plt.Rectangle((x0, y0), x1 - x0 + 1, y1 - y0 + 1,
                                  fill=False,
                                  edgecolor='red',
@@ -253,33 +296,36 @@ def visualize_stn(model):
             ax.add_patch(rect)
             ax.add_patch(rect2)
 
+
 if __name__ == '__main__':
-    s = f"STNGoogleNet,{train_dir},{valid_dir},batch{BATCH_SIZE},lr{LR},wd{weight_decay_f}"
+    s = f"GoogleNet,{train_dir},{valid_dir},batch{BATCH_SIZE},lr{LR},wd{weight_decay_f}"
     writer = SummaryWriter(comment=s)
-      # build MyDataset
+    # build MyDataset
     # class_sample_counts = [32412,3984] # test_rect_train
     # class_sample_counts = [38220, 5328] # fixtrain_test2
     # class_sample_counts = [33444,4128] #function_test_5
     # class_sample_counts = [33456,4128] #function_test_10
     # class_sample_counts = [33444, 4128]  # function_test_20_old
-    class_sample_counts = [8376, 4128]  # function_test_20
-    weights = 1./ torch.tensor(class_sample_counts, dtype=torch.float)
+    # class_sample_counts = [8376, 4128]  # function_test_20
+    # class_sample_counts = [2464, 1053]  # train_shift
+    class_sample_counts = [7804, 4824]  # origin_diff
+    weights = 1. / torch.tensor(class_sample_counts, dtype=torch.float)
     # 这个 get_classes_for_all_imgs是关键
     train_data = BuildingDataset(data_dir=train_dir, transform=transform)
     train_targets = train_data.get_classes_for_all_imgs()
     samples_weights = weights[train_targets]
     sampler = WeightedRandomSampler(weights=samples_weights, num_samples=len(samples_weights), replacement=True)
 
-
     valid_data = BuildingDataset(data_dir=valid_dir, transform=transform_val)
 
     # build DataLoader
-    train_loader = DataLoader(dataset=train_data, batch_size=BATCH_SIZE, shuffle=False,num_workers=4,pin_memory=True,sampler = sampler)
-    valid_loader = DataLoader(dataset=valid_data, batch_size=BATCH_SIZE,num_workers=0,pin_memory=True,shuffle=True)
+    train_loader = DataLoader(dataset=train_data, batch_size=BATCH_SIZE, shuffle=False, num_workers=4, pin_memory=True,
+                              sampler=sampler)
+    valid_loader = DataLoader(dataset=valid_data, batch_size=BATCH_SIZE, num_workers=0, pin_memory=True, shuffle=True)
     # AlexNet model and training
     # net = AlexNet(num_classes=N_FEATURES, init_weights=True)
-    # net = GoogLeNet(num_classes=N_FEATURES,init_weights=True,aux_logits=True)
-    net = STNGoogLeNet(num_classes=N_FEATURES, init_weights=True, aux_logits=True)
+    net = GoogLeNet(num_classes=N_FEATURES,init_weights=True,aux_logits=True)
+    # net = STNGoogLeNet(num_classes=N_FEATURES, init_weights=True, aux_logits=True)
     # 模拟输入数据，进行网络可视化
     # input_data = Variable(torch.rand(16, 3, 224, 224))
     # with writer:
@@ -288,6 +334,7 @@ if __name__ == '__main__':
     # if torch.cuda.device_count() > 1:
     #     print("Use", torch.cuda.device_count(), 'gpus')
     #     net = nn.DataParallel(net)
+    # net.load_state_dict(torch.load('./save_model/googleNet/best_model.pth'), False)
     model = net.to(device)
 
     # 定义损失函数（交叉熵损失）
@@ -297,12 +344,12 @@ if __name__ == '__main__':
 
     # 定义优化器,SGD,
     # optimizer = optim.Adam(net.parameters(), lr=LR, weight_decay=weight_decay_f)
-    optimizer = optimizer = optim.SGD(net.parameters(), lr = LR, momentum=0.9,weight_decay=weight_decay_f)
+    optimizer = optimizer = optim.SGD(net.parameters(), lr=LR, momentum=0.9, weight_decay=weight_decay_f)
     # 学习率每隔10epoch变为原来的0.1
     # lr_scheduler = lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.1)
     lr_scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=milestones, gamma=0.1)
 
-# 开始训练
+    # 开始训练
     epoch = MAX_EPOCH
     min_acc = 0
     train_num = len(train_loader)
@@ -320,19 +367,19 @@ if __name__ == '__main__':
                 os.mkdir('save_model')
             min_acc = a
             print('save best model', )
-            torch.save(net.state_dict(), "save_model/googleNet/best_model.pth")
-        torch.save(net.state_dict(), "save_model/googleNet/every_model.pth")
+            torch.save(net.state_dict(), "save_model/diff_Goo/best_model.pth")
+        torch.save(net.state_dict(), "save_model/diff_Goo/every_model.pth")
         # if float(a) < float(85) :
-        #     torch.save(net.state_dict(), "save_model/googleNet/lunwen_model.pth")
-        # 保存最后的权重文件   
+        #     torch.save(net.state_dict(), "save_model/diff_Goo/lunwen_model.pth")
+        # 保存最后的权重文件
         if t == epoch - 1:
-            torch.save(net.state_dict(), "save_model/googleNet/last_model.pth")
+            torch.save(net.state_dict(), "save_model/diff_Goo/last_model.pth")
         finish = time.time()
         time_elapsed = finish - start
         print('本次训练耗时 {:.0f}m {:.0f}s'.format(
             time_elapsed // 60, time_elapsed % 60))
-    visualize_stn(model)
-    plt.ioff()
-    plt.show()
+    # visualize_stn(model)
+    # plt.ioff()
+    # plt.show()
     print(f'** Finished Training **')
     df.to_csv('runs/train_focal.txt', index=True, sep=';')

@@ -8,10 +8,10 @@ alexnet_path = r'save_model/shift\best_model.pth\\'  # path to the net
 N_FEATURES = 2
 
 # params of training
-MAX_EPOCH = 150
+MAX_EPOCH = 20
 BATCH_SIZE = 50
 
-LR = 0.0001
+LR = 0.00001
 device = 'cuda:0'
 
 # configuration of decission tree
@@ -21,7 +21,7 @@ tree_path = 'dt.pkl'
 # data path
 # the path of training data
 # train_dir = "train_stn"
-train_dir = "train_shift"
+train_dir = "origin_shift"
 valid_dir = "valid_shift"
 # valid_dir=pathlib.Path("valid")
 

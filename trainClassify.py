@@ -14,6 +14,7 @@ from torchvision import transforms
 from PIL import Image
 from ShiftNet import ShiftNet
 from DifferenceNet import DifferenceNet
+from GoogleNet import GoogLeNet
 import numpy as np
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from sklearn.metrics import classification_report
@@ -144,16 +145,17 @@ shiftimgloader = DataLoader(dataset=shiftdataset, batch_size=64)
 
 # 加载预训练模型
 # 载入模型参数
-DiffNet = DifferenceNet(num_classes=2, init_weights=True)
-DiffNet.load_state_dict(torch.load(r'save_model\different\last_model.pth'))
+# DiffNet = DifferenceNet(num_classes=2, init_weights=True)
+DiffNet = GoogLeNet(num_classes=2)
+DiffNet.load_state_dict(torch.load(r'save_model\diff_Goo\last_model.pth'))
 # DiffNet.cuda()
 ShiftNet = ShiftNet(num_classes=2, init_weights=True)
 ShiftNet.load_state_dict(torch.load(r'save_model\shift\last_model.pth'))
 
-# features_diff = extract_features(model=DiffNet, dataloader=diffimgloader)
-# for id_num in tqdm(features_diff):
-#     feature_path = os.path.join(difffeatures_dir0, f'id{id_num}.npy')
-#     np.save(feature_path, features_diff[id_num])
+features_diff = extract_features(model=DiffNet, dataloader=diffimgloader)
+for id_num in tqdm(features_diff):
+    feature_path = os.path.join(difffeatures_dir, f'id{id_num}.npy')
+    np.save(feature_path, features_diff[id_num])
 
 # features_shift = extract_features(model=ShiftNet, dataloader=shiftimgloader)
 # for id_num in tqdm(features_shift):
@@ -222,6 +224,7 @@ y_train_pred = clf.predict(X_train)
 y_test_pred = clf.predict(X_test)
 
 # 计算分类评价指标
+print('GoogLeNet+Diff/AlexNet+Sift: (1)随机复制')
 target_names = ['class 0', 'class 1']
 print(classification_report(y_train, y_train_pred, target_names=target_names,digits=4))
 print(classification_report(y_test, y_test_pred, target_names=target_names,digits=4))

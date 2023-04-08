@@ -95,10 +95,10 @@ class STNGoogLeNet(nn.Module):
         # Sampler
         x2 = F.grid_sample(x, grid2)
         # return x, theta
-        return x1, x2
+        return x1, x2,theta,theta2
 
     def forward(self, x):
-        x1, x2 = self.stn(x)
+        x1, x2,_,_ = self.stn(x)
         # x1, x2, theta = self.stn(x)
         x = torch.cat((x1, x2), dim=1)
         # N x 3 x 224 x 224 -》 N x 6 x 224 x 224
@@ -152,6 +152,7 @@ class STNGoogLeNet(nn.Module):
         # N x 1000 (num_classes)
         if self.training and self.aux_logits:  # eval model lose this layer
             return x, aux2, aux1  # 主分支输出值，辅助分类器输出值
+
         return x
 
     def _initialize_weights(self):
