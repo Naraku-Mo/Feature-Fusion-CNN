@@ -1,5 +1,5 @@
 # -- coding:utf-8
-"""Configuration of Alexnet
+"""Configuration of Alexnet-STN
 """
 
 # configuration of shifted

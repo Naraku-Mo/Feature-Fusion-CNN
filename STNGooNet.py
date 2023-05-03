@@ -3,6 +3,57 @@ import torch
 import torch.nn.functional as F
 
 
+# 定义STN网络结构
+class STN(nn.Module):
+    def __init__(self):
+        super(STN, self).__init__()
+        # 定义 STN 的局部化网络
+        # Spatial transformer localization-network
+        self.theta_fixed = 0
+        self.localization = nn.Sequential(
+            nn.AvgPool2d(2),  # 下采样 3*224*224 -》 3*112*112
+            nn.Conv2d(3, 8, kernel_size=7),  # 8*216*218 -》 8*106*106
+            nn.MaxPool2d(2, stride=2),  # 8*109*109 -》 8*53*53
+            nn.ReLU(True),
+            nn.Conv2d(8, 10, kernel_size=5),  # 10*105*105 -》 10*49*49
+            nn.MaxPool2d(2, stride=2),  # 10 * 52 * 52 -》 10*24*24
+            nn.ReLU(True),
+            nn.Conv2d(10, 12, kernel_size=3),  # 12 * 50 * 50 -》 12*22*22
+            nn.MaxPool2d(2, stride=2),  # 12*25*25 -》 12*11*11
+            nn.ReLU(True)
+        )
+
+        # 定义回归器
+        # Regressor for the 3 * 2 affine matrix
+        self.fc_loc = nn.Sequential(
+            nn.Linear(12 * 11 * 11, 32),  # 按局部网络计算结果修改
+            nn.ReLU(True),
+            nn.Linear(32, 3 * 2)
+        )
+
+        # 初始化回归器的权重和偏置
+        # Initialize the weights/bias with identity transformation
+        self.fc_loc[2].weight.data.zero_()
+        self.fc_loc[2].bias.data.copy_(torch.tensor([1, 0, 0, 0, 1, 0], dtype=torch.float))
+
+    def forward(self, x):
+        # Localisation net
+        xs = self.localization(x)  # 卷积
+        xs = xs.view(-1, 12 * 11 * 11)  # resize Tensor维度重构，按局部网络计算结果修改
+        # xs = self.dropout(xs)
+        theta = self.fc_loc(xs)  # 全连接（6个参数）
+        theta = theta.view(-1, 2, 3)
+        # print("修改前的theta：", theta)
+        theta[:, 0:1, 1:2] = self.theta_fixed  # 只位移和缩放，不旋转
+        theta[:, 1:, 0:1] = self.theta_fixed
+        # print("修改后的theta:", theta)
+        # Grid generator
+        grid = F.affine_grid(theta, x.size())
+        # Sampler
+        x = F.grid_sample(x, grid)
+        return x, theta
+
+
 # 4.定义googlenet网络
 # aux_logits=True：使用辅助分类器。
 # init_weights=False：初始化权重。
@@ -40,68 +91,18 @@ class STNGoogLeNet(nn.Module):
 
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.dropout = nn.Dropout(0.4)
+        self.relu = nn.ReLU(True)
         self.fc = nn.Linear(1024, num_classes)
+        self.stn1 = STN()
+        self.stn2 = STN()
         if init_weights:
             self._initialize_weights()
-        # Spatial transformer localization-network
-        self.localization = nn.Sequential(
-            nn.Conv2d(3, 8, kernel_size=7),
-            nn.MaxPool2d(2, stride=2),
-            nn.ReLU(True),
-            nn.Conv2d(8, 10, kernel_size=5),
-            nn.MaxPool2d(2, stride=2),
-            nn.ReLU(True)
-        )
-
-        # Regressor for the 3 * 2 affine matrix
-        self.fc_loc = nn.Sequential(
-            nn.Linear(10 * 52 * 52, 32),  # 按计算结果修改
-            nn.ReLU(True),
-            nn.Linear(32, 3 * 2)
-        )
-
-        # Initialize the weights/bias with identity transformation
-        self.fc_loc[2].weight.data.zero_()
-        self.fc_loc[2].bias.data.copy_(torch.tensor([1, 0, 0, 0, 1, 0], dtype=torch.float))
-
-    # Spatial transformer network forward functioån
-    def stn(self, x):
-        # Localisation net
-        xs = self.localization(x)  # 卷积
-        xs = xs.view(-1, 10 * 52 * 52)  # resize Tensor维度重构
-        theta = self.fc_loc(xs)  # 全连接（6个参数）
-        theta = theta.view(-1, 2, 3)
-        # print("修改前的theta：", theta)
-        # theta[:, 0:1, 1:2] = self.theta_fixed  # 只位移和缩放，不旋转
-        # theta[:, 1:, 0:1] = self.theta_fixed
-        # print("修改后的theta:", theta)
-        # Grid generator
-        grid = F.affine_grid(theta, x.size())
-        # Sampler
-        # x = F.grid_sample(x, grid)
-        x1 = F.grid_sample(x, grid)
-        # 两个并行的STN
-        # Localisation net
-        xs2 = self.localization(x)  # 卷积
-        xs2 = xs2.view(-1, 10 * 52 * 52)  # resize Tensor维度重构
-        theta2 = self.fc_loc(xs2)  # 全连接（6个参数）
-        theta2 = theta2.view(-1, 2, 3)
-        # print("修改前的theta：", theta)
-        # theta2[:, 0:1, 1:2] = self.theta_fixed  # 只位移和缩放，不旋转
-        # theta2[:, 1:, 0:1] = self.theta_fixed
-        # print("修改后的theta:", theta)
-        # Grid generator
-        grid2 = F.affine_grid(theta2, x.size())
-        # Sampler
-        x2 = F.grid_sample(x, grid2)
-        # return x, theta
-        return x1, x2,theta,theta2
 
     def forward(self, x):
-        x1, x2,_,_ = self.stn(x)
-        # x1, x2, theta = self.stn(x)
+        x1, theta1 = self.stn1(x)
+        x2, theta2 = self.stn2(x)
         x = torch.cat((x1, x2), dim=1)
-        # N x 3 x 224 x 224 -》 N x 6 x 224 x 224
+        # N x 3 x 224 x 224 -》 N x 6 x 224 x 224(拼接两个，两倍）
         x = self.conv1(x)
         # N x 64 x 112 x 112
         x = self.maxpool1(x)

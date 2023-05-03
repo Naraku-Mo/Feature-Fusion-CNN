@@ -15,7 +15,7 @@ from dataset import BuildingDataset
 # from CUBdataset import CUB
 import pandas as pd
 import torch.nn.functional as F
-from STNet import STNet
+from STNLeNet import STNLeNet
 import os
 from torchvision import transforms
 import numpy as np
@@ -99,18 +99,18 @@ def train(dataloader, model, loss_fn, optimizer, epoch):
     for batch, (X, y) in enumerate(dataloader):
         # 前向传播
         X, y = X.to(device), y.to(device)
-        # output = model(X)
-        output, output2, output1 = model(X)
+        output = model(X)
+        # output, output2, output1 = model(X)
         cur_loss0 = loss_fn(output, y)
-        cur_loss1 = loss_fn(output1, y)
-        cur_loss2 = loss_fn(output2, y)
+        # cur_loss1 = loss_fn(output1, y)
+        # cur_loss2 = loss_fn(output2, y)
 
         # torch.max返回每行最大的概率和最大概率的索引,由于批次是16，所以返回16个概率和索引
         _, pred = torch.max(output, axis=1)
 
         # 计算每批次的准确率， output.shape[0]为该批次的多少
         cur_acc = torch.sum(y == pred) / output.shape[0]
-        cur_loss = cur_loss0+ cur_loss1 * 0.3 + cur_loss2 * 0.3
+        cur_loss = cur_loss0  # + cur_loss1 * 0.3 + cur_loss2 * 0.3
         # test_acc(output.argmax(1), y)
         test_F1(output.argmax(1), y)
         test_recall(output.argmax(1), y)
@@ -307,7 +307,7 @@ def visualize_stn(model):
 
 
 if __name__ == '__main__':
-    s = f"GoogleNet,{train_dir},{valid_dir},batch{BATCH_SIZE},lr{LR},wd{weight_decay}"
+    s = f"STNLeNet,{train_dir},{valid_dir},batch{BATCH_SIZE},lr{LR},wd{weight_decay}"
     writer = SummaryWriter(comment=s)
     # build MyDataset
     # class_sample_counts = [33288,4128] #compareTrain
@@ -360,10 +360,10 @@ if __name__ == '__main__':
     # )
 
     # AlexNet model and training
-    # net = LeNet5(num_classes=N_FEATURES)
+    net = STNLeNet(num_classes=N_FEATURES)
     # net = STNet(num_classes=N_FEATURES, init_weights=True)
     # net = STNGoogLeNet(num_classes=N_FEATURES)
-    net = GoogLeNet(num_classes=N_FEATURES)
+    # net = GoogLeNet(num_classes=N_FEATURES)
     # 模拟输入数据，进行网络可视化
     # input_data = Variable(torch.rand(16, 3, 224, 224))
     # with writer:

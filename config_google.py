@@ -10,8 +10,8 @@ alexnet_path = 'Alexnet5.pth'  # path to the net
 N_FEATURES = 2
 
 # params of training
-MAX_EPOCH = 150
-BATCH_SIZE = 16
+MAX_EPOCH = 100
+BATCH_SIZE = 48
 LR = 0.00001
 device = 'cuda:0'
 
@@ -21,10 +21,10 @@ tree_path = 'dt_alex.pkl'
 
 # data path
 ## the path of training data
-# train_dir = r"function_test_20"
-# valid_dir = r"function_test_20_val"
-train_dir = "origin_diff"
-valid_dir = "valid_diff"
+train_dir = r"function_test_20"
+valid_dir = r"function_test_20_val"
+# train_dir = "origin_diff"
+# valid_dir = "valid_diff"
 ## valid_dir=pathlib.Path("valid")
 weight_decay_f = 0.00001
 milestones = [50,70,90,110]

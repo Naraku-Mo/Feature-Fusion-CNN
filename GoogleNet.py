@@ -92,7 +92,7 @@ class GoogLeNet(nn.Module):
         # N x 1024
         x = self.dropout(x)
         x = self.fc(x)
-        # N x 1000 (num_classes)
+        # # N x 1000 (num_classes)
         if self.training and self.aux_logits:   # eval model lose this layer
             return x, aux2, aux1 # 主分支输出值，辅助分类器输出值
         return x

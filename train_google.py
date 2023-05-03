@@ -9,6 +9,7 @@ from torch.autograd import Variable
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 # from model import AlexNet
+# from model import LeNet
 from GoogleNet import GoogLeNet
 from config_google import *
 from dataset import BuildingDataset
@@ -20,6 +21,9 @@ from torchvision import transforms
 import torchmetrics
 import matplotlib.pyplot as plt
 from STNGooNet import STNGoogLeNet
+from DifferenceNet import DifferenceNet
+from LeNet5 import LeNet5
+from GoogleNet import GoogLeNet
 import torch.nn.functional as F
 
 plt.ion()
@@ -33,7 +37,7 @@ torch.backends.cudnn.benchmark = False
 
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
-    transforms.RandomRotation(90),
+    # transforms.RandomRotation(90),
     transforms.RandomHorizontalFlip(),
     transforms.ToTensor(),
     # test_rect_train
@@ -49,11 +53,11 @@ transform = transforms.Compose([
     # function_test_20_old
     # transforms.Normalize(mean= [0.9318218, 0.9599232, 0.96266234], std=[0.13674922, 0.07559318, 0.09820192])
     # function_test_20
-    # transforms.Normalize(mean=[0.933881, 0.957784, 0.9582756], std=[0.13598508, 0.07826422, 0.10344314])
+    transforms.Normalize(mean=[0.933881, 0.957784, 0.9582756], std=[0.13598508, 0.07826422, 0.10344314])
     # train_shift
     # transforms.Normalize(mean=[0.89731014, 0.9391688, 0.9396487], std=[0.18013711, 0.09479259, 0.12887895])
     # origin_diff
-    transforms.Normalize(mean=[0.918039, 0.9500407, 0.9504322], std=[0.15249752, 0.08265463, 0.11152452])
+    # transforms.Normalize(mean=[0.918039, 0.9500407, 0.9504322], std=[0.15249752, 0.08265463, 0.11152452])
 ])
 transform_val = transforms.Compose([
     transforms.Resize((224, 224)),
@@ -72,11 +76,11 @@ transform_val = transforms.Compose([
     # function_test_20_old
     # transforms.Normalize(mean= [0.85530734, 0.9493153, 0.96933824], std=[0.28664276, 0.087741055, 0.098699085])
     # function_test_20
-    # transforms.Normalize(mean=[0.92881185, 0.95924205, 0.96284324], std=[0.13795583, 0.07532157, 0.09843103])
+    transforms.Normalize(mean=[0.92881185, 0.95924205, 0.96284324], std=[0.13795583, 0.07532157, 0.09843103])
     # valid_shift
     # transforms.Normalize(mean=[0.89881814, 0.9392697, 0.9402372], std=[0.17823705, 0.09425104, 0.12656842])
     # valid_diff
-    transforms.Normalize(mean=[0.9262576, 0.9596687, 0.9627389], std=[0.1469692, 0.07660995, 0.10082596])
+    # transforms.Normalize(mean=[0.9262576, 0.9596687, 0.9627389], std=[0.1469692, 0.07660995, 0.10082596])
 ])
 
 df = pd.DataFrame(columns=['loss', 'accuracy'])
@@ -195,7 +199,7 @@ def val(dataloader, model, loss_fn, epoch):
 
 def convert_image_np(inp):
     """Convert a Tensor to numpy image."""
-    inp = inp.numpy().transpose((1, 2, 0))  # 将颜色通道放到后面
+    inp = inp.cpu().numpy().transpose((1, 2, 0))  # 将颜色通道放到后面
     mean = np.array([0.485, 0.456, 0.406])
     std = np.array([0.229, 0.224, 0.225])
     inp = std * inp + mean  # 用公式"(x-mean)/std"，将每个元素分布到(-1,1)，也就是标准化
@@ -223,59 +227,60 @@ def visualize_stn(model):
         data = next(iter(train_loader))[0]
         model.eval()
         # 使用STN模型得到变换后的图像和变换矩阵
-        transformed_data1, transformed_data2, theta1, theta2 = model.stn(data.to(device))
-        # transformed_data1, theta = model.stn(data.to(device))
+        transformed_data1, theta1 = model.stn1(data.to(device))
+        transformed_data2, theta2 = model.stn2(data.to(device))
         # transformed_data1, theta = model.stn(transformed_data0.to(device))
         batch_size, _, h, w = transformed_data1.shape
         # 计算图像注意力中心
-        # x_center, y_center = attention(transformed_data1.to(device))
+        x_center, y_center = w // 2, h // 2
+        theta1 = torch.cat((theta1.to(device), torch.tensor([0, 0, 1]).repeat(batch_size, 1, 1).to(device)), dim=1)
+        theta2 = torch.cat((theta2.to(device), torch.tensor([0, 0, 1]).repeat(batch_size, 1, 1).to(device)), dim=1)
         # x_center2, y_center2 = attention(transformed_data2.to(device))
 
         # calculate the attention center coordinates for each example in the batch
         attention_center_coordinates1 = []
         attention_center_coordinates2 = []
         for i in range(batch_size):
-            attention_map = transformed_data1[i, 0, :, :]
-            theta_center1 = theta1[i, :, :].flatten()
-            theta_center2 = theta2[i, :, :].flatten()
-            attention_weights = F.softmax(attention_map, dim=0)
-            attention_center_row = torch.sum(torch.arange(attention_map.size(0),
-                                                          device=attention_map.device).float() * attention_weights) / attention_map.size(
-                0)
-            attention_center_col = torch.sum(torch.arange(attention_map.size(1),
-                                                          device=attention_map.device).float() * attention_weights) / attention_map.size(
-                1)
-            center_p1 = torch.tensor([attention_center_row, attention_center_col]).to(device)
-            center_p1[0] = (center_p1[0] - theta_center1[2]) / theta_center1[0]
-            center_p1[1] = (center_p1[1] - theta_center1[5]) / theta_center1[4]
-            attention_center_coordinates1.append(torch.stack([center_p1[0], center_p1[1]]))
-            attention_map2 = transformed_data2[i, 0, :, :]
-            attention_weights2 = F.softmax(attention_map2, dim=0)
-            attention_center_row2 = torch.sum(torch.arange(attention_map2.size(0),
-                                                           device=attention_map2.device).float() * attention_weights2) / attention_map2.size(
-                0)
-            attention_center_col2 = torch.sum(torch.arange(attention_map2.size(1),
-                                                           device=attention_map2.device).float() * attention_weights2) / attention_map2.size(
-                1)
-            center_p2 = torch.tensor([attention_center_row2, attention_center_col2]).to(device)
-            center_p2[0] = (center_p2[0] - theta_center2[2]) / theta_center2[0]
-            center_p2[1] = (center_p2[1] - theta_center2[5]) / theta_center2[4]
-            attention_center_coordinates2.append(torch.stack([center_p2[0], center_p2[1]]))
+            # 构造齐次坐标
+            point = torch.tensor([x_center, y_center, 1.]).view(3, 1).to(device)
+            # 计算逆变换矩阵
+            inv_theta1 = torch.inverse(theta1[i]).to(device)
+            inv_theta2 = torch.inverse(theta2[i]).to(device)
+            # 对特征图像的中心点进行逆变换
+            out_point1 = inv_theta1.matmul(point).view(-1).to(device)
+            out_point2 = inv_theta2.matmul(point).view(-1).to(device)
+            # 获取注意力中心在原始图像上的坐标
+            x_out1 = out_point1[0].item()
+            y_out1 = out_point1[1].item()
+            x_out2 = out_point2[0].item()
+            y_out2 = out_point2[1].item()
+            attention_center_coordinates1.append([x_out1, y_out1])
+            attention_center_coordinates2.append([x_out2, y_out2])
 
         # 创建matplotlib的Figure和Axes对象
         fig, axs = plt.subplots(nrows=batch_size // 4 + (batch_size % 4 != 0),
                                 ncols=4,
                                 figsize=(15, (batch_size // 4 + (batch_size % 4 != 0)) * 3))
+        fig2, axs2 = plt.subplots(nrows=batch_size // 4 + (batch_size % 4 != 0),
+                                  ncols=4,
+                                  figsize=(15, (batch_size // 4 + (batch_size % 4 != 0)) * 3))
+        fig3, axs3 = plt.subplots(nrows=batch_size // 4 + (batch_size % 4 != 0),
+                                  ncols=4,
+                                  figsize=(15, (batch_size // 4 + (batch_size % 4 != 0)) * 3))
         for i in range(batch_size):
             ax = axs[i // 4, i % 4]
+            ax2 = axs2[i // 4, i % 4]
+            ax3 = axs3[i // 4, i % 4]
             ax.imshow(convert_image_np(data[i]))
+            ax2.imshow(convert_image_np(transformed_data1[i]))
+            ax3.imshow(convert_image_np(transformed_data2[i]))
             attention_center_row1, attention_center_col1 = attention_center_coordinates1[i]
             attention_center_row2, attention_center_col2 = attention_center_coordinates2[i]
             attention_box_size = 64
-            x0 = int(attention_center_row1 - attention_box_size / 2 - 5)
-            y0 = int(attention_center_col1 - attention_box_size / 2 - 5)
-            x1 = int(attention_center_row1 + attention_box_size / 2 - 5)
-            y1 = int(attention_center_col1 + attention_box_size / 2 - 5)
+            x0 = int(attention_center_row1 - attention_box_size / 2 - 1)
+            y0 = int(attention_center_col1 - attention_box_size / 2 - 1)
+            x1 = int(attention_center_row1 + attention_box_size / 2 - 1)
+            y1 = int(attention_center_col1 + attention_box_size / 2 - 1)
             x2_0 = int(attention_center_row2 - attention_box_size / 2)
             y2_0 = int(attention_center_col2 - attention_box_size / 2)
             x2_1 = int(attention_center_row2 + attention_box_size / 2)
@@ -298,7 +303,7 @@ def visualize_stn(model):
 
 
 if __name__ == '__main__':
-    s = f"GoogleNet,{train_dir},{valid_dir},batch{BATCH_SIZE},lr{LR},wd{weight_decay_f}"
+    s = f"STNGoogleNet,{train_dir},{valid_dir},batch{BATCH_SIZE},lr{LR},wd{weight_decay_f}"
     writer = SummaryWriter(comment=s)
     # build MyDataset
     # class_sample_counts = [32412,3984] # test_rect_train
@@ -306,9 +311,9 @@ if __name__ == '__main__':
     # class_sample_counts = [33444,4128] #function_test_5
     # class_sample_counts = [33456,4128] #function_test_10
     # class_sample_counts = [33444, 4128]  # function_test_20_old
-    # class_sample_counts = [8376, 4128]  # function_test_20
+    class_sample_counts = [8376, 4128]  # function_test_20
     # class_sample_counts = [2464, 1053]  # train_shift
-    class_sample_counts = [7804, 4824]  # origin_diff
+    # class_sample_counts = [7804, 4824]  # origin_diff
     weights = 1. / torch.tensor(class_sample_counts, dtype=torch.float)
     # 这个 get_classes_for_all_imgs是关键
     train_data = BuildingDataset(data_dir=train_dir, transform=transform)
@@ -324,8 +329,10 @@ if __name__ == '__main__':
     valid_loader = DataLoader(dataset=valid_data, batch_size=BATCH_SIZE, num_workers=0, pin_memory=True, shuffle=True)
     # AlexNet model and training
     # net = AlexNet(num_classes=N_FEATURES, init_weights=True)
-    net = GoogLeNet(num_classes=N_FEATURES,init_weights=True,aux_logits=True)
-    # net = STNGoogLeNet(num_classes=N_FEATURES, init_weights=True, aux_logits=True)
+    # net = DifferenceNet(num_classes=N_FEATURES, init_weights=True)
+    # net = LeNet5(num_classes=N_FEATURES)
+    # net = GoogLeNet(num_classes=N_FEATURES,init_weights=True,aux_logits=True)
+    net = STNGoogLeNet(num_classes=N_FEATURES, init_weights=True, aux_logits=True)
     # 模拟输入数据，进行网络可视化
     # input_data = Variable(torch.rand(16, 3, 224, 224))
     # with writer:
@@ -334,9 +341,8 @@ if __name__ == '__main__':
     # if torch.cuda.device_count() > 1:
     #     print("Use", torch.cuda.device_count(), 'gpus')
     #     net = nn.DataParallel(net)
-    # net.load_state_dict(torch.load('./save_model/googleNet/best_model.pth'), False)
+    # net.load_state_dict(torch.load('./save_model/stn/last_model.pth'), False)
     model = net.to(device)
-
     # 定义损失函数（交叉熵损失）
     loss_fn = nn.CrossEntropyLoss()
     # loss_fn = focal_loss(alpha= [1.12196,9.20306],gamma=2,num_classes=2)
@@ -348,6 +354,9 @@ if __name__ == '__main__':
     # 学习率每隔10epoch变为原来的0.1
     # lr_scheduler = lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.1)
     lr_scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=milestones, gamma=0.1)
+    # 总参数计算
+    # total_params = sum(p.numel() for p in net.parameters())
+    # print(f"Total number of GoogleNet+2STN parameters: {total_params}")
 
     # 开始训练
     epoch = MAX_EPOCH
@@ -355,7 +364,7 @@ if __name__ == '__main__':
     train_num = len(train_loader)
     for t in range(epoch):
         start = time.time()
-        print(f"epoch{t+1}\n-------------------")
+        print(f"epoch{t + 1}\n-------------------")
         train(train_loader, net, loss_fn, optimizer, t)
         a = val(valid_loader, net, loss_fn, t)
         lr_scheduler.step()
@@ -367,19 +376,19 @@ if __name__ == '__main__':
                 os.mkdir('save_model')
             min_acc = a
             print('save best model', )
-            torch.save(net.state_dict(), "save_model/diff_Goo/best_model.pth")
-        torch.save(net.state_dict(), "save_model/diff_Goo/every_model.pth")
+            torch.save(net.state_dict(), "save_model/stn/best_model.pth")
+        torch.save(net.state_dict(), "save_model/stn/every_model.pth")
         # if float(a) < float(85) :
         #     torch.save(net.state_dict(), "save_model/diff_Goo/lunwen_model.pth")
         # 保存最后的权重文件
         if t == epoch - 1:
-            torch.save(net.state_dict(), "save_model/diff_Goo/last_model.pth")
+            torch.save(net.state_dict(), "save_model/stn/last_model.pth")
         finish = time.time()
         time_elapsed = finish - start
         print('本次训练耗时 {:.0f}m {:.0f}s'.format(
             time_elapsed // 60, time_elapsed % 60))
-    # visualize_stn(model)
-    # plt.ioff()
-    # plt.show()
+    visualize_stn(model)
+    plt.ioff()
+    plt.show()
     print(f'** Finished Training **')
     df.to_csv('runs/train_focal.txt', index=True, sep=';')
